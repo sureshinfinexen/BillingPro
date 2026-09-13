@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{% if product %}{{ t('edit_product') }}{% else %}{{ t('add_product') }}{% endif %} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{% if product %}{{ t('edit_product') }}{% else %}{{ t('add_product') }}{% endif %}{% endblock %}
+{% block content %}
+{% if error %}<div class="alert alert-err">{{ error }}</div>{% endif %}
+{% set def_gst = default_gst if default_gst is defined else 18 %}
+{% set is_override = product and (product.gst_override|default(0)|int) == 1 %}
+<div class="card" style="max-width:640px">
+  <div class="card-body">
+    <form method="post" action="{% if product %}/products/{{ product.id }}/edit{% else %}/products/new{% endif %}" id="prodForm">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('sku') }} * <span style="font-weight:400;color:var(--text-secondary)">({{ t('barcode') }})</span></label>
+          <div style="display:flex;gap:6px">
+            <input class="form-control" name="sku" id="sku" required value="{{ product.sku if product else '' }}" style="font-family:ui-monospace,monospace">
+            {% if not product %}
+            <button type="button" class="btn btn-outline" id="btn-gen-sku" title="{{ t('generate_sku') }}">{{ t('generate_sku') }}</button>
+            {% endif %}
+          </div>
+        </div>
+        <div class="form-group"><label class="form-label">{{ t('category') }}</label>
+          <input class="form-control" name="category" value="{{ product.category if product and product.category else '' }}"></div>
+      </div>
+      <div class="form-group"><label class="form-label">{{ t('name') }} *</label>
+        <input class="form-control" name="name" required value="{{ product.name if product else '' }}"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('mrp') }} *</label>
+          <input class="form-control" type="number" step="0.01" min="0" name="mrp" id="mrp" required
+                 value="{{ product.mrp if product and product.mrp else (product.price if product else '0') }}"></div>
+        <div class="form-group"><label class="form-label">{{ t('discount') }}</label>
+          <input class="form-control" type="number" step="0.01" min="0" name="discount" id="discount"
+                 value="{{ product.discount if product else '0' }}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('rate') }} (= {{ t('mrp') }} − {{ t('discount') }})</label>
+          <input class="form-control" id="rate" readonly tabindex="-1"
+                 value="{{ product.price if product else '0' }}" style="background:#f3f4f6"></div>
+        <div class="form-group"><label class="form-label">{{ t('cost') }}</label>
+          <input class="form-control" type="number" step="0.01" min="0" name="cost" value="{{ product.cost if product else '0' }}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('stock') }}</label>
+          <input class="form-control" type="number" step="0.01" min="0" name="stock" value="{{ product.stock if product else '0' }}"></div>
+        <div class="form-group"><label class="form-label">{{ t('unit') }}</label>
+          <input class="form-control" name="unit" value="{{ product.unit if product else 'pcs' }}"></div>
+      </div>
+
+      <div class="card" style="margin:4px 0 10px;box-shadow:none;border:1px solid var(--border)">
+        <div class="card-body" style="padding:10px 12px">
+          <div class="form-label" style="margin-bottom:6px">{{ t('gst') }} %</div>
+          <p style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;line-height:1.35">{{ t('product_gst_help') }}</p>
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer">
+            <input type="radio" name="gst_mode" value="default" id="gst_mode_default"
+                   {% if not is_override %}checked{% endif %} style="margin-top:3px">
+            <span>{{ t('use_default_gst') }} <strong>({{ def_gst }}%)</strong></span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;margin-bottom:8px;cursor:pointer">
+            <input type="radio" name="gst_mode" value="custom" id="gst_mode_custom"
+                   {% if is_override %}checked{% endif %} style="margin-top:3px">
+            <span>{{ t('custom_product_gst') }}</span>
+          </label>
+          <div class="form-group mb-0" style="max-width:160px;margin-left:24px">
+            <input class="form-control" type="number" step="0.01" min="0" max="100" name="gst_pct" id="gst_pct"
+                   value="{% if is_override %}{{ product.gst_pct }}{% else %}{{ def_gst }}{% endif %}">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">HSN</label>
+          <input class="form-control" name="hsn" value="{{ product.hsn if product and product.hsn else '' }}"></div>
+        <div class="form-group"><label class="form-label">{{ t('reorder_level') }}</label>
+          <input class="form-control" type="number" step="0.01" min="0" name="reorder_level" value="{{ product.reorder_level if product and product.reorder_level is not none else '5' }}"></div>
+      </div>
+      {% if product %}
+      <div class="form-group"><label class="form-label">{{ t('status') }}</label>
+        <select class="form-control" name="active" style="max-width:200px">
+          <option value="1" {% if product.active %}selected{% endif %}>{{ t('active') }}</option>
+          <option value="0" {% if not product.active %}selected{% endif %}>{{ t('inactive') }}</option>
+        </select>
+      </div>
+      {% endif %}
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+        <a href="/products" class="btn btn-outline">{{ t('cancel') }}</a>
+        {% if product %}
+        <a href="/products/barcodes?ids={{ product.id }}" class="btn btn-outline">🏷️ {{ t('print_barcode') }}</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function(){
+  const mrp=document.getElementById('mrp'), disc=document.getElementById('discount'), rate=document.getElementById('rate');
+  function sync(){
+    const m=Number(mrp.value)||0, d=Number(disc.value)||0;
+    rate.value = Math.max(0, Math.round((m-d)*100)/100).toFixed(2);
+  }
+  mrp.addEventListener('input', sync); disc.addEventListener('input', sync); sync();
+
+  const defGst={{ def_gst|tojson }};
+  const gstInput=document.getElementById('gst_pct');
+  const modeDefault=document.getElementById('gst_mode_default');
+  const modeCustom=document.getElementById('gst_mode_custom');
+  function syncGstUi(){
+    const custom=modeCustom.checked;
+    gstInput.disabled=!custom;
+    gstInput.style.opacity=custom?'1':'.65';
+    if(!custom) gstInput.value=Number(defGst).toFixed(2).replace(/\.00$/,'');
+  }
+  modeDefault.addEventListener('change', syncGstUi);
+  modeCustom.addEventListener('change', syncGstUi);
+  syncGstUi();
+
+  const gen=document.getElementById('btn-gen-sku');
+  if(gen){
+    gen.onclick=async()=>{
+      const r=await fetch('/api/products/next-sku',{credentials:'same-origin'});
+      const d=await r.json();
+      if(d.ok&&d.sku) document.getElementById('sku').value=d.sku;
+    };
+  }
+})();
+</script>
+{% endblock %}

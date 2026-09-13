@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ t('reports') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('reports') }}{% endblock %}
+{% block content %}
+<div class="stats">
+  <div class="stat"><div class="lbl">{{ t('today_sales') }}</div><div class="val">₹{{ today_row.revenue|money }}</div></div>
+  <div class="stat"><div class="lbl">{{ t('today_bills') }}</div><div class="val">{{ today_row.bills }}</div></div>
+  <div class="stat"><div class="lbl">{{ t('total_revenue') }}</div><div class="val">₹{{ totals.revenue|money }}</div></div>
+  <div class="stat"><div class="lbl">{{ t('profit') }}</div><div class="val">₹{{ profit|money }}</div></div>
+</div>
+
+<div class="stats">
+  <div class="stat">
+    <div class="lbl">{{ t('best_buyer') }}</div>
+    <div class="val" style="font-size:16px">
+      {% if best_buyer %}{{ d(best_buyer.buyer) }}{% else %}—{% endif %}
+    </div>
+    {% if best_buyer %}<div class="sub">₹{{ best_buyer.spent|money }} · {{ best_buyer.bills }} {{ t('bills_count') }}</div>{% endif %}
+  </div>
+  <div class="stat">
+    <div class="lbl">{{ t('best_product') }}</div>
+    <div class="val" style="font-size:16px">
+      {% if best_product %}{{ d(best_product.product) }}{% else %}—{% endif %}
+    </div>
+    {% if best_product %}<div class="sub">{{ best_product.qty_sold }} {{ t('sold') }} · ₹{{ best_product.amount|money }}</div>{% endif %}
+  </div>
+  <div class="stat">
+    <div class="lbl">{{ t('best_biller') }}</div>
+    <div class="val" style="font-size:16px">
+      {% if best_biller %}{{ d(best_biller.biller) }}{% else %}—{% endif %}
+    </div>
+    {% if best_biller %}<div class="sub">₹{{ best_biller.amount|money }} · {{ best_biller.bills }} {{ t('bills_count') }}</div>{% endif %}
+  </div>
+</div>
+
+<div class="reports-grid">
+  <div class="card">
+    <div class="card-header"><h2>{{ t('best_product') }}</h2></div>
+    <div class="card-body" style="padding:0">
+      <table>
+        <colgroup><col style="width:50%"><col style="width:20%"><col style="width:30%"></colgroup>
+        <thead><tr><th>{{ t('name') }}</th><th class="num">{{ t('quantity') }}</th><th class="num">{{ t('amount') }}</th></tr></thead>
+        <tbody>
+        {% for p in top_products %}
+        <tr><td>{{ d(p.product) }}</td><td class="num">{{ p.qty_sold }}</td><td class="num">₹{{ p.amount|money }}</td></tr>
+        {% else %}
+        <tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h2>{{ t('best_biller') }}</h2></div>
+    <div class="card-body" style="padding:0">
+      <table>
+        <colgroup><col style="width:50%"><col style="width:20%"><col style="width:30%"></colgroup>
+        <thead><tr><th>{{ t('employee_short') }}</th><th class="num">{{ t('bills') }}</th><th class="num">{{ t('amount') }}</th></tr></thead>
+        <tbody>
+        {% for b in top_billers %}
+        <tr><td>{{ d(b.biller) }}</td><td class="num">{{ b.bills }}</td><td class="num">₹{{ b.amount|money }}</td></tr>
+        {% else %}
+        <tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>{{ t('best_buyer') }}</h2></div>
+  <div class="card-body" style="padding:0">
+    <table>
+      <colgroup><col style="width:30%"><col style="width:25%"><col style="width:20%"><col style="width:25%"></colgroup>
+      <thead><tr><th>{{ t('customer') }}</th><th>{{ t('customer_mobile') }}</th><th class="num">{{ t('bills') }}</th><th class="num">{{ t('amount') }}</th></tr></thead>
+      <tbody>
+      {% for b in top_buyers %}
+      <tr><td>{{ d(b.buyer) if b.buyer else '—' }}</td><td>{{ b.mobile or '—' }}</td><td class="num">{{ b.bills }}</td><td class="num">₹{{ b.spent|money }}</td></tr>
+      {% else %}
+      <tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

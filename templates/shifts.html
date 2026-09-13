@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ t('shifts') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('shifts') }}{% endblock %}
+{% block content %}
+<div class="reports-grid">
+<div class="card"><div class="card-header"><h2>{{ t('by_counter') }}</h2></div>
+<div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('counter') }}</th><th class="num">{{ t('bills') }}</th><th class="num">{{ t('amount') }}</th></tr></thead>
+<tbody>
+{% for r in by_counter %}
+<tr><td>{{ d(r.counter_name) if r.counter_name else '—' }}</td><td class="num">{{ r.bills }}</td><td class="num">₹{{ r.amount|money }}</td></tr>
+{% else %}<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>{% endfor %}
+</tbody></table></div></div>
+<div class="card"><div class="card-header"><h2>{{ t('by_cashier') }}</h2></div>
+<div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('employee_short') }}</th><th class="num">{{ t('bills') }}</th><th class="num">{{ t('amount') }}</th></tr></thead>
+<tbody>
+{% for r in by_staff %}
+<tr><td>{{ d(r.staff_name) if r.staff_name else '—' }}</td><td class="num">{{ r.bills }}</td><td class="num">₹{{ r.amount|money }}</td></tr>
+{% else %}<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>{% endfor %}
+</tbody></table></div></div>
+</div>
+{% endblock %}

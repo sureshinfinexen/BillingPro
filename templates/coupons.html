@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ t('coupons') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('coupons') }}{% endblock %}
+{% block content %}
+{% if saved %}<div class="alert alert-ok">{{ t('saved_ok') }}</div>{% endif %}
+<div class="card" style="max-width:520px;margin-bottom:16px">
+  <div class="card-header"><h2>{{ t('add') }} {{ t('coupons') }}</h2></div>
+  <div class="card-body">
+    <form method="post" action="/coupons">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('code') }} *</label><input class="form-control" name="code" required></div>
+        <div class="form-group"><label class="form-label">{{ t('discount') }} %</label><input class="form-control" type="number" step="0.01" name="discount_pct" value="10"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('discount') }} ₹</label><input class="form-control" type="number" step="0.01" name="discount_amt" value="0"></div>
+        <div class="form-group"><label class="form-label">{{ t('min_bill') }}</label><input class="form-control" type="number" step="0.01" name="min_bill" value="0"></div>
+      </div>
+      <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+    </form>
+  </div>
+</div>
+<div class="card"><div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('code') }}</th><th class="num">%</th><th class="num">₹</th><th class="num">{{ t('min_bill') }}</th><th>{{ t('status') }}</th></tr></thead>
+<tbody>
+{% for c in coupons %}
+<tr><td><strong>{{ c.code }}</strong></td><td class="num">{{ c.discount_pct }}</td><td class="num">{{ c.discount_amt }}</td><td class="num">{{ c.min_bill }}</td><td>{% if c.active %}{{ t('active') }}{% else %}{{ t('inactive') }}{% endif %}</td></tr>
+{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

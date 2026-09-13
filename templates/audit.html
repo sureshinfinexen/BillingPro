@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ t('audit') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('audit') }}{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('date') }}</th><th>{{ t('employee_short') }}</th><th>{{ t('action') }}</th><th>{{ t('entity') }}</th><th>{{ t('notes') }}</th></tr></thead>
+<tbody>
+{% for r in rows %}
+<tr><td>{{ r.created_at }}</td><td>{{ d(r.staff_name) if r.staff_name else '—' }}</td><td>{{ r.action }}</td><td>{{ r.entity }} {% if r.entity_id %}#{{ r.entity_id }}{% endif %}</td><td>{{ r.detail }}</td></tr>
+{% else %}
+<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

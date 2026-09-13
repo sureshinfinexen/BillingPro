@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ t('employees') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('employees') }}{% endblock %}
+{% block content %}
+{% if saved %}<div class="alert alert-ok">{{ t('saved_ok') }}</div>{% endif %}
+{% if error == 'username_exists' %}<div class="alert alert-err">{{ t('username_exists') }}</div>{% endif %}
+{% if error == 'cannot_delete_self' %}<div class="alert alert-err">{{ t('cannot_delete_self') }}</div>{% endif %}
+{% if error == 'save_failed' %}<div class="alert alert-err">{{ t('save_failed') }}</div>{% endif %}
+
+<div class="card" style="max-width:640px;margin-bottom:16px">
+  <div class="card-header"><h2>{{ t('add_employee') }}</h2></div>
+  <div class="card-body">
+    <form method="post" action="/employees">
+      <input type="hidden" name="eid" value="">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('name') }} *</label>
+          <input class="form-control" name="name" required></div>
+        <div class="form-group"><label class="form-label">{{ t('username') }} *</label>
+          <input class="form-control" name="username" required placeholder="{{ t('username_placeholder') }}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('password') }}</label>
+          <input class="form-control" type="password" name="password" placeholder="{{ t('password_placeholder') }}"></div>
+        <div class="form-group"><label class="form-label">{{ t('role') }}</label>
+          <select class="form-control" name="role">
+            <option value="cashier">{{ t('cashier') }}</option>
+            <option value="admin">{{ t('admin') }}</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ t('counter') }} ({{ t('tie_counter') }})</label>
+        <select class="form-control" name="counter_id">
+          <option value="">{{ t('select_counter') }}</option>
+          {% for c in counters %}
+          <option value="{{ c.id }}">{{ d(c.name) }} ({{ c.code }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ t('user_theme') }}</label>
+        <select class="form-control" name="theme_preset">
+          <option value="">{{ t('theme_use_shop_default') }}</option>
+          {% for key, preset in theme_presets.items() %}
+          <option value="{{ key }}">{{ t('theme_preset_' + key) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding:0">
+    <table>
+      <colgroup>
+        <col style="width:18%"><col style="width:16%"><col style="width:14%"><col style="width:22%"><col style="width:14%"><col style="width:16%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>{{ t('name') }}</th>
+          <th>{{ t('username') }}</th>
+          <th>{{ t('role') }}</th>
+          <th>{{ t('counter') }}</th>
+          <th>{{ t('status') }}</th>
+          <th class="act">{{ t('actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for e in employees %}
+      <tr>
+        <td>{{ d(e.name) }}</td>
+        <td>{{ e.username }}</td>
+        <td>{% if e.role == 'admin' %}{{ t('admin') }}{% elif e.role == 'cashier' %}{{ t('cashier') }}{% else %}{{ e.role }}{% endif %}</td>
+        <td>{% if e.counter_name %}{{ d(e.counter_name) }} ({{ e.counter_code }}){% else %}—{% endif %}</td>
+        <td>{% if e.active %}<span class="badge">{{ t('active') }}</span>{% else %}{{ t('inactive') }}{% endif %}</td>
+        <td class="act">
+          {% if e.active and e.id != user.id %}
+          <form method="post" action="/employees/{{ e.id }}/delete" style="display:inline" onsubmit="return confirm({{ t('confirm_delete')|tojson }})">
+            <button class="btn btn-sm btn-danger" type="submit">{{ t('delete') }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

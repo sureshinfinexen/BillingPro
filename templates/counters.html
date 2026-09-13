@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ t('counters') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('counters') }}{% endblock %}
+{% block content %}
+{% if saved %}<div class="alert alert-ok">{{ t('saved_ok') }}</div>{% endif %}
+<div class="card" style="max-width:520px;margin-bottom:16px">
+  <div class="card-header"><h2>{{ t('add_counter') }}</h2></div>
+  <div class="card-body">
+    <form method="post" action="/counters">
+      <input type="hidden" name="cid" value="">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('name') }} *</label>
+          <input class="form-control" name="name" required></div>
+        <div class="form-group"><label class="form-label">{{ t('code') }} *</label>
+          <input class="form-control" name="code" required placeholder="C1"></div>
+      </div>
+      <div class="form-group"><label class="form-label">{{ t('location') }}</label>
+        <input class="form-control" name="location"></div>
+      <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-body" style="padding:0">
+    <table>
+      <colgroup>
+        <col style="width:26%"><col style="width:14%"><col style="width:22%"><col style="width:18%"><col style="width:20%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>{{ t('name') }}</th>
+          <th>{{ t('code') }}</th>
+          <th>{{ t('location') }}</th>
+          <th>{{ t('status') }}</th>
+          <th class="act">{{ t('actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for c in counters %}
+      <tr>
+        <td>{{ d(c.name) }}</td>
+        <td>{{ c.code }}</td>
+        <td>{{ d(c.location) if c.location else '—' }}</td>
+        <td>{% if c.active %}<span class="badge">{{ t('active') }}</span>{% else %}{{ t('inactive') }}{% endif %}</td>
+        <td class="act">
+          {% if c.active %}
+          <form method="post" action="/counters/{{ c.id }}/delete" style="display:inline" onsubmit="return confirm({{ t('confirm_delete')|tojson }})">
+            <button class="btn btn-sm btn-danger" type="submit">{{ t('delete') }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ t('products') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('products') }}{% endblock %}
+{% block content %}
+{% if saved %}<div class="alert alert-ok">{{ t('saved_ok') }}{% if saved.startswith('uploaded') %} ({{ saved }}){% endif %}</div>{% endif %}
+
+<div class="search-bar no-print">
+  <form method="get" action="/products" style="display:flex;gap:8px;flex:1;flex-wrap:wrap;align-items:center">
+    <input class="form-control" name="q" value="{{ q }}" placeholder="{{ t('search_product') }}" style="max-width:280px">
+    <button class="btn btn-primary" type="submit">{{ t('search') }}</button>
+  </form>
+  <button type="button" class="btn btn-outline" id="btn-print-bc">🏷️ {{ t('print_barcodes') }}</button>
+  <a href="/products/barcodes{% if q %}?q={{ q|urlencode }}{% endif %}" class="btn btn-outline">🏷️ {{ t('print_barcodes') }} — all</a>
+  <a href="/products/new" class="btn btn-primary">+ {{ t('add_product') }}</a>
+</div>
+
+<div class="card no-print" style="margin-bottom:16px">
+  <div class="card-header"><h2>{{ t('upload_csv') }}</h2></div>
+  <div class="card-body">
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">{{ t('csv_hint') }}</p>
+    <form method="post" action="/products/upload" enctype="multipart/form-data" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="file" name="file" accept=".csv" required class="form-control" style="max-width:320px">
+      <button class="btn btn-outline" type="submit">{{ t('upload') }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding:0">
+    <table>
+      <colgroup>
+        <col style="width:4%"><col style="width:12%"><col style="width:20%"><col style="width:10%"><col style="width:10%">
+        <col style="width:10%"><col style="width:8%"><col style="width:9%"><col style="width:17%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="center no-print"><input type="checkbox" id="bc-check-all" title="Select all"></th>
+          <th>{{ t('sku') }}</th>
+          <th>{{ t('name') }}</th>
+          <th class="num">{{ t('mrp') }}</th>
+          <th class="num">{{ t('discount') }}</th>
+          <th class="num">{{ t('rate') }}</th>
+          <th class="num">{{ t('gst') }}</th>
+          <th class="num">{{ t('stock') }}</th>
+          <th class="act no-print">{{ t('actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for p in products %}
+      <tr>
+        <td class="center no-print"><input type="checkbox" class="bc-pick" value="{{ p.id }}"></td>
+        <td><code style="font-size:12px">{{ p.sku }}</code></td>
+        <td>{{ d(p.name) }}</td>
+        <td class="num">₹{{ (p.mrp or p.price)|money }}</td>
+        <td class="num">₹{{ (p.discount or 0)|money }}</td>
+        <td class="num">₹{{ p.price|money }}</td>
+        <td class="num">{% set eg = (p.gst_pct if (p.gst_override|default(0)|int) == 1 else (default_gst if default_gst is defined else p.gst_pct or 0)) %}{{ eg }}%{% if (p.gst_override|default(0)|int) == 1 %} <span class="badge" title="{{ t('custom_product_gst') }}">★</span>{% endif %}</td>
+        <td class="num">{{ p.stock }}</td>
+        <td class="act no-print">
+          <a href="/products/barcodes?ids={{ p.id }}" class="btn btn-sm btn-outline" title="{{ t('print_barcode') }}">🏷️</a>
+          <a href="/products/{{ p.id }}/edit" class="btn btn-sm btn-outline">{{ t('edit') }}</a>
+          <form method="post" action="/products/{{ p.id }}/delete" style="display:inline" onsubmit="return confirm({{ t('confirm_delete')|tojson }})">
+            <button class="btn btn-sm btn-danger" type="submit">{{ t('delete') }}</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+(function(){
+  const all=document.getElementById('bc-check-all');
+  if(all) all.addEventListener('change',()=>{
+    document.querySelectorAll('.bc-pick').forEach(c=>{ c.checked=all.checked; });
+  });
+  document.getElementById('btn-print-bc').onclick=()=>{
+    const ids=[...document.querySelectorAll('.bc-pick:checked')].map(c=>c.value);
+    if(!ids.length){ alert({{ t('no_results')|tojson }}); return; }
+    location='/products/barcodes?ids='+ids.join(',');
+  };
+})();
+</script>
+{% endblock %}

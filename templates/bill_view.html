@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}{{ bill.bill_no }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('bill_no') }}: {{ bill.bill_no }}{% endblock %}
+{% block head %}
+<style>
+{% if request.query_params.get('thermal') or request.query_params.get('reprint') %}
+@media print{
+  @page{size:80mm auto;margin:4mm}
+  body,.main,.content{background:#fff!important}
+  .card{box-shadow:none;border:0}
+  .card-body{padding:0;font-size:12px}
+  table{font-size:11px}
+}
+.reprint-mark{text-align:center;color:var(--danger);font-weight:700;margin-bottom:8px;letter-spacing:.08em}
+{% endif %}
+</style>
+{% endblock %}
+{% block content %}
+{% if request.query_params.get('reprint') %}<div class="reprint-mark">*** {{ t('duplicate_copy') }} ***</div>{% endif %}
+<div class="no-print" style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap">
+  <button class="btn btn-primary" onclick="window.print()">{{ t('print') }}</button>
+  <form method="post" action="/bills/{{ bill.id }}/reprint" style="display:inline">
+    <button class="btn btn-outline" type="submit">{{ t('reprint_thermal') }}</button>
+  </form>
+  <a href="/bills/{{ bill.id }}/whatsapp" class="btn btn-outline" target="_blank">WhatsApp</a>
+  <a href="/bills/{{ bill.id }}/edit" class="btn btn-outline">{{ t('edit_bill') }}</a>
+  <a href="/billing" class="btn btn-outline">{{ t('new_bill') }}</a>
+  <a href="/bills" class="btn btn-outline">{{ t('bills') }}</a>
+</div>
+<div class="card">
+  <div class="card-body">
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:22px;font-weight:800;color:var(--primary)">{{ APP_NAME }}</div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">{{ APP_TAGLINE }}</div>
+      <div style="font-size:14px;font-style:italic;color:var(--text-primary)">{{ bill_greeting }}</div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;font-size:13px">
+      <div>
+        {% if bill.customer_name %}<div><strong>{{ t('customer') }}:</strong> {{ bill.customer_name }}</div>{% endif %}
+        {% if bill.customer_mobile %}<div><strong>{{ t('customer_mobile') }}:</strong> {{ bill.customer_mobile }}</div>{% endif %}
+        <div><strong>{{ t('counter') }}:</strong> {{ d(bill.counter_name) if bill.counter_name else '—' }}{% if bill.counter_code %} ({{ bill.counter_code }}){% endif %}</div>
+        <div><strong>{{ t('employee') }}:</strong> {{ d(bill.staff_name) if bill.staff_name else '—' }}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:16px"><strong>{{ t('bill_no') }}:</strong> {{ bill.bill_no }}</div>
+        <div><strong>{{ t('date') }}:</strong> {{ bill.bill_date }}</div>
+        <div><strong>{{ t('payment') }}:</strong>
+          {% if bill.payment_mode=='cash' %}{{ t('pay_cash') }}
+          {% elif bill.payment_mode=='upi' %}{{ t('pay_upi') }}
+          {% elif bill.payment_mode=='card' %}{{ t('pay_card') }}{% if bill.card_last4 %} ({{ t('card_ending') }} ···· {{ bill.card_last4 }}){% endif %}
+          {% else %}{{ bill.payment_mode }}{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>{{ t('name') }}</th>
+          <th>{{ t('quantity') }}</th>
+          <th>{{ t('mrp') }}</th>
+          <th>{{ t('discount') }}</th>
+          <th>{{ t('rate') }}</th>
+          <th>{{ t('cgst') }}</th>
+          <th>{{ t('sgst') }}</th>
+          <th>{{ t('line_total') }}</th>
+          <th>{{ t('customer_saving') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for it in items %}
+      {% set half = ((it.gst_amt or 0) / 2) %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ d(it.name) }}<div style="font-size:11px;color:var(--text-secondary)">{{ it.sku }} · {{ t('gst') }} {{ it.gst_pct or 0 }}%</div></td>
+        <td>{{ it.qty }}</td>
+        <td>₹{{ (it.mrp or it.unit_price)|money }}</td>
+        <td>₹{{ (it.discount or 0)|money }}</td>
+        <td>₹{{ it.unit_price|money }}</td>
+        <td>₹{{ (it.cgst_amt if it.cgst_amt is not none else half)|money }}</td>
+        <td>₹{{ (it.sgst_amt if it.sgst_amt is not none else half)|money }}</td>
+        <td>₹{{ it.line_total|money }}</td>
+        <td style="color:#15803d;font-weight:600">₹{{ (it.customer_saving or it.discount or 0)|money }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <div style="display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-top:16px;align-items:start">
+      <div style="max-width:300px;margin-left:auto;font-size:14px;flex:1">
+        <div style="display:flex;justify-content:space-between;padding:4px 0"><span>{{ t('subtotal') }}</span><span>₹{{ bill.subtotal|money }}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;color:#15803d"><span>{{ t('customer_saving') }}</span><span>₹{{ (bill.customer_saving or bill.discount)|money }}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0"><span>{{ t('cgst') }}</span><span>₹{{ (bill.cgst if bill.cgst is not none else ((bill.tax or 0)/2))|money }}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0"><span>{{ t('sgst') }}</span><span>₹{{ (bill.sgst if bill.sgst is not none else ((bill.tax or 0)/2))|money }}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0"><span>{{ t('gst') }} {{ t('total') }}</span><span>₹{{ bill.tax|money }}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:18px;font-weight:800;color:var(--primary);border-top:1px solid var(--border)"><span>{{ t('total') }}</span><span>₹{{ bill.total|money }}</span></div>
+      </div>
+    </div>
+
+    <div style="text-align:center;margin-top:28px;padding-top:16px;border-top:1px dashed var(--border)">
+      <div style="font-size:15px;font-weight:600">{{ bill_thanks }}</div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-top:6px">{{ COMPANY_NAME }} · {{ COMPANY_MOBILE }}</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

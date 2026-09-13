@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ t('credit_sales') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('credit_sales') }}{% endblock %}
+{% block content %}
+{% if saved %}<div class="alert alert-ok">{{ t('saved_ok') }}</div>{% endif %}
+<div class="card"><div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('customer') }}</th><th>{{ t('bill_no') }}</th><th class="num">{{ t('amount') }}</th><th class="num">{{ t('paid') }}</th><th class="num">{{ t('due') }}</th><th class="act">{{ t('actions') }}</th></tr></thead>
+<tbody>
+{% for r in rows %}
+<tr>
+  <td>{{ r.customer_name or '—' }}<div style="font-size:11px;color:var(--text-secondary)">{{ r.mobile or '' }}</div></td>
+  <td>{{ r.bill_no or '—' }}</td>
+  <td class="num">₹{{ r.amount|money }}</td>
+  <td class="num">₹{{ r.paid|money }}</td>
+  <td class="num"><strong>₹{{ r.due|money }}</strong></td>
+  <td class="act">
+    <form method="post" action="/credit/{{ r.id }}/pay" style="display:inline-flex;gap:6px">
+      <input class="form-control" name="amount" type="number" step="0.01" min="0.01" value="{{ r.due }}" style="width:100px;padding:5px 8px">
+      <button class="btn btn-sm btn-primary" type="submit">{{ t('collect') }}</button>
+    </form>
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

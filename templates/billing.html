@@ -1,0 +1,847 @@
+{% extends "base.html" %}
+{% block title %}{{ t('new_bill') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('new_bill') }}{% endblock %}
+{% block head %}
+<style>
+.pos-simple{width:100%;max-width:none}
+.suggest{margin-top:4px;border:1px solid var(--border);border-radius:6px;max-height:180px;overflow:auto;display:none}
+.suggest.open{display:block}
+.suggest button{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-bottom:1px solid var(--border-soft);background:transparent;cursor:pointer;font:inherit;color:var(--text-primary)}
+.suggest button:hover,.suggest button.active{background:var(--hover-row)}
+.suggest .meta{font-size:11px;color:var(--text-secondary);display:block;margin-top:1px}
+.line-entry{display:grid;grid-template-columns:1.4fr 80px 80px 80px 80px 90px 78px;gap:6px;align-items:end;margin-top:8px}
+@media(max-width:900px){.line-entry{grid-template-columns:1fr 1fr}}
+.ro{background:#f3f4f6!important}
+.totals .row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px}
+.totals .grand{font-size:18px;font-weight:800;color:var(--primary);border-top:1px solid var(--border);padding-top:6px;margin-top:4px}
+.saving{color:#15803d;font-weight:600}
+.qty-inp{width:70px;padding:5px 6px;border:2px solid var(--primary);border-radius:5px;background:var(--input-bg);font-weight:600}
+#search-status{font-size:11px;color:var(--text-secondary);min-height:14px;margin-top:2px}
+.stock-ok{color:var(--success)}.stock-low{color:#b45309}.stock-out{color:var(--danger)}
+.keys-hint{font-size:11px;color:var(--text-secondary);margin-top:6px;padding:6px 8px;background:color-mix(in srgb,var(--primary-light) 55%,transparent);border-radius:6px;line-height:1.35}
+#btn-add .key{opacity:.75;font-size:10px;margin-left:3px}
+.bill-grid{display:grid;gap:8px}
+.bill-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.search-scan-row{display:flex;gap:6px;align-items:stretch;flex-wrap:wrap}
+.search-scan-row #q{flex:1;min-width:140px}
+#btn-cam-scan{white-space:nowrap;flex-shrink:0}
+#bp-scan-modal{display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.55);align-items:flex-end;justify-content:center;padding:0;padding-bottom:env(safe-area-inset-bottom)}
+#bp-scan-modal.open{display:flex}
+#bp-scan-box{background:var(--card-bg);border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:14px 14px 18px;box-shadow:0 -8px 40px rgba(0,0,0,.35);max-height:92dvh;overflow:auto}
+#bp-scan-box h3{font-size:15px;margin:0 0 6px}
+#bp-scan-reader{width:100%;min-height:220px;border-radius:8px;overflow:hidden;background:#111}
+#bp-scan-reader video{width:100%!important;object-fit:cover}
+#bp-scan-box .help{font-size:11px;color:var(--text-secondary);margin:8px 0 10px;line-height:1.35}
+#bp-scan-status{font-size:12px;min-height:16px;margin:6px 0;color:var(--text-secondary)}
+#bp-scan-status.err{color:var(--danger)}
+#bp-scan-actions{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+#bp-scan-file-btn{width:100%;justify-content:center}
+@media(min-width:640px){
+  #bp-scan-modal{align-items:center;padding:16px}
+  #bp-scan-box{border-radius:12px;max-height:90vh}
+}
+@media(max-width:900px){
+  .search-scan-row{flex-direction:column}
+  #btn-cam-scan{width:100%;justify-content:center;min-height:44px}
+  .line-entry{grid-template-columns:1fr 1fr;gap:8px}
+  #btn-add{grid-column:1 / -1;width:100%;justify-content:center;min-height:44px}
+  .keys-hint{display:none}
+  .bill-actions,#btn-complete{width:100%}
+  #btn-complete{min-height:48px;font-size:15px}
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="pos-simple">
+  {% if not user.counter_id and not is_admin %}
+  <div class="alert alert-err">{{ t('counter_required') }}</div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-body bill-grid">
+      <div class="form-row-3">
+        <div class="form-group mb-0">
+          <label class="form-label">{{ t('customer_mobile_required') }}</label>
+          <input id="customer_mobile" class="form-control" placeholder="9876543210" inputmode="numeric"
+                 maxlength="10" required autocomplete="tel" autofocus>
+          <div id="cust-status" class="cust-status"></div>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">{{ t('customer') }}</label>
+          <input id="customer_name" class="form-control" placeholder="{{ t('customer_optional') }}">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">{{ t('bill_no') }} *</label>
+          <input id="bill_no" class="form-control" required value="{{ bill_no }}" style="font-weight:700;letter-spacing:.02em">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group mb-0">
+          <label class="form-label">{{ t('counter') }}</label>
+          {% if is_admin %}
+          <select id="counter_id" class="form-control">
+            <option value="">{{ t('select_counter') }}</option>
+            {% for c in counters %}
+            <option value="{{ c.id }}" {% if user.counter_id==c.id %}selected{% endif %}>{{ d(c.name) }} ({{ c.code }})</option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <input class="form-control" value="{{ counter_name or '—' }}" disabled>
+          <input type="hidden" id="counter_id" value="{{ user.counter_id or '' }}">
+          {% endif %}
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">{{ t('employee') }}</label>
+          <input class="form-control" value="{{ d(user.name) }}" disabled>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">{{ t('payment') }}</label>
+          <select id="payment_mode" class="form-control">
+            <option value="cash">{{ t('pay_cash') }}</option>
+            <option value="upi">{{ t('pay_upi') }}</option>
+            <option value="card">{{ t('pay_card') }}</option>
+            <option value="split">{{ t('pay_split') }}</option>
+            <option value="credit">{{ t('credit_sales') }}</option>
+          </select>
+        </div>
+      </div>
+      <div id="card-last4-wrap" class="form-group mb-0" style="max-width:180px;display:none">
+        <label class="form-label">{{ t('card_last4') }} *</label>
+        <input id="card_last4" class="form-control" inputmode="numeric" maxlength="4" pattern="[0-9]{4}"
+               placeholder="{{ t('card_last4_hint') }}" autocomplete="off">
+      </div>
+      <div id="split-wrap" style="display:none;padding:8px;border:1px dashed var(--border);border-radius:6px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">{{ t('pay_split') }}</div>
+        <div class="form-row-3">
+          <div class="form-group mb-0"><label class="form-label">{{ t('pay_cash') }}</label><input id="split-cash" class="form-control" type="number" step="0.01" min="0" value="0"></div>
+          <div class="form-group mb-0"><label class="form-label">{{ t('pay_upi') }}</label><input id="split-upi" class="form-control" type="number" step="0.01" min="0" value="0"></div>
+          <div class="form-group mb-0"><label class="form-label">{{ t('pay_card') }}</label><input id="split-card" class="form-control" type="number" step="0.01" min="0" value="0"></div>
+        </div>
+        <div class="form-group mb-0" style="margin-top:6px;max-width:180px"><label class="form-label">{{ t('card_last4') }}</label>
+          <input id="split-card-last4" class="form-control" maxlength="4" inputmode="numeric" placeholder="{{ t('card_last4_hint') }}"></div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group mb-0"><label class="form-label">{{ t('bill_discount_pct') }}</label>
+          <input id="bill_discount_pct" class="form-control" type="number" step="0.01" min="0" value="0"></div>
+        <div class="form-group mb-0"><label class="form-label">{{ t('coupon') }}</label>
+          <div style="display:flex;gap:5px"><input id="coupon_code" class="form-control" placeholder="SAVE10"><button type="button" id="btn-coupon" class="btn btn-outline btn-sm">{{ t('apply') }}</button></div>
+          <div id="coupon-status" class="cust-status"></div></div>
+        <div class="form-group mb-0"><label class="form-label">{{ t('loyalty_redeem') }}</label>
+          <input id="loyalty_redeem" class="form-control" type="number" step="1" min="0" value="0"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>{{ t('add') }} {{ t('products') }}</h2></div>
+    <div class="card-body">
+      <label class="form-label">{{ t('search_by_code_name') }}</label>
+      <div class="search-scan-row">
+        <input id="q" class="form-control" placeholder="{{ t('scan_hint') }}" autocomplete="off">
+        <button type="button" id="btn-cam-scan" class="btn btn-outline" title="{{ t('scan_with_camera') }}">📷 {{ t('scan_with_camera') }}</button>
+      </div>
+      <div id="search-status"></div>
+      <div id="suggest" class="suggest"></div>
+
+      <div class="line-entry">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('name') }}</label>
+          <input id="sel-name" class="form-control ro" readonly tabindex="-1" placeholder="—">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('mrp') }}</label>
+          <input id="sel-mrp" class="form-control ro" readonly tabindex="-1" value="">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('discount') }}</label>
+          <input id="sel-disc" class="form-control ro" readonly tabindex="-1" value="">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('rate') }}</label>
+          <input id="sel-rate" class="form-control ro" readonly tabindex="-1" value="">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('quantity') }}</label>
+          <input id="sel-qty" class="form-control" type="number" step="0.01" min="0.01" value="1">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('gst_total') }}</label>
+          <input id="sel-line" class="form-control ro" readonly tabindex="-1" value="">
+        </div>
+        <button type="button" id="btn-add" class="btn btn-primary">{{ t('add') }} <span class="key">↵</span></button>
+      </div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-top:8px">
+        {{ t('stock') }}: <strong id="sel-stock">—</strong>
+        · {{ t('gst') }} <strong id="sel-gst">0%</strong> · {{ t('customer_saving') }}: <strong class="saving" id="sel-save">₹0.00</strong>
+      </div>
+      <div class="keys-hint">{{ t('billing_keys_hint') }}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body" style="padding:0">
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>{{ t('name') }}</th>
+            <th>{{ t('quantity') }}</th>
+            <th>{{ t('mrp') }}</th>
+            <th>{{ t('discount') }}</th>
+            <th>{{ t('rate') }}</th>
+            <th>{{ t('gst') }}</th>
+            <th>{{ t('line_total') }}</th>
+            <th>{{ t('customer_saving') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cart-body">
+          <tr id="empty-row"><td colspan="9" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('empty_cart') }}</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body" style="display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:end">
+      <div id="bill-err" class="alert alert-err" style="display:none;flex:1"></div>
+      <div class="totals" style="min-width:260px;margin-left:auto">
+        <div class="row"><span>{{ t('subtotal') }} ({{ t('rate') }})</span><span id="subtotal">₹0.00</span></div>
+        <div class="row"><span>{{ t('discount') }} / {{ t('customer_saving') }}</span><span class="saving" id="disc-show">₹0.00</span></div>
+        <div class="row"><span>{{ t('cgst') }}</span><span id="cgst-show">₹0.00</span></div>
+        <div class="row"><span>{{ t('sgst') }}</span><span id="sgst-show">₹0.00</span></div>
+        <div class="row"><span>{{ t('gst') }} {{ t('total') }}</span><span id="tax-show">₹0.00</span></div>
+        <div class="row grand"><span>{{ t('total') }}</span><span id="grand">₹0.00</span></div>
+      </div>
+      <button id="btn-complete" class="btn btn-primary" style="min-width:180px;justify-content:center" type="button">{{ t('complete_bill') }}</button>
+      <button id="btn-hold" class="btn btn-outline" type="button">{{ t('hold_bill') }}</button>
+    </div>
+  </div>
+</div>
+
+<div id="bp-scan-modal" aria-hidden="true">
+  <div id="bp-scan-box">
+    <h3>📷 {{ t('scan_with_camera') }}</h3>
+    <p class="help">{{ t('camera_scan_help') }}</p>
+    <div id="bp-scan-reader"></div>
+    <div id="bp-scan-status"></div>
+    <div id="bp-scan-actions">
+      <label class="btn btn-primary" id="bp-scan-file-btn" for="bp-scan-file">{{ t('take_barcode_photo') }}</label>
+      <input type="file" id="bp-scan-file" accept="image/*" capture="environment" hidden>
+      <button type="button" class="btn btn-outline" id="bp-scan-close" style="width:100%;justify-content:center">{{ t('stop_camera') }}</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+(function(){
+  const MSG = {
+    remove: {{ t('remove')|tojson|safe }},
+    selectCounter: {{ t('select_counter')|tojson|safe }},
+    emptyCart: {{ t('empty_cart')|tojson|safe }},
+    noResults: {{ t('no_results')|tojson|safe }},
+    billNoRequired: {{ t('bill_no_required')|tojson|safe }},
+    mobileRequired: {{ t('err_mobile_required')|tojson|safe }},
+    mobileInvalid: {{ t('err_mobile_invalid')|tojson|safe }},
+    customerFound: {{ t('customer_found')|tojson|safe }},
+    customerNew: {{ t('customer_new')|tojson|safe }},
+    customerPoints: {{ t('customer_points')|tojson|safe }},
+    insufficientStock: {{ t('insufficient_stock')|tojson|safe }},
+    cardLast4Required: {{ t('err_card_last4')|tojson|safe }},
+    holdOk: {{ t('hold_saved')|tojson|safe }},
+    searchNavHint: {{ t('search_nav_hint')|tojson|safe }},
+    stock: {{ t('stock')|tojson|safe }},
+    mrp: {{ t('mrp')|tojson|safe }},
+    disc: {{ t('disc_short')|tojson|safe }},
+    rate: {{ t('rate')|tojson|safe }},
+    gst: {{ t('gst')|tojson|safe }},
+    cgst: {{ t('cgst')|tojson|safe }},
+    sgst: {{ t('sgst')|tojson|safe }},
+    addedViaScan: {{ t('added_via_scan')|tojson|safe }},
+    barcodeNotFound: {{ t('barcode_not_found')|tojson|safe }},
+    cameraNeedHttps: {{ t('camera_need_https')|tojson|safe }},
+    genericError: {{ t('generic_error')|tojson|safe }}
+  };
+  const cart = [];
+  let selected = null, timer=null, custTimer=null, seq=0, activeIdx=-1;
+
+  const q = document.getElementById('q');
+  const suggest = document.getElementById('suggest');
+  const statusEl = document.getElementById('search-status');
+  const cartBody = document.getElementById('cart-body');
+  const qtyEl = document.getElementById('sel-qty');
+
+  function money(n){ return Math.round((Number(n)||0)*100)/100; }
+  function fmt(n){ return '₹'+money(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function stockClass(n){
+    if(n<=0) return 'stock-out';
+    if(n<=5) return 'stock-low';
+    return 'stock-ok';
+  }
+
+  function lineCalc(p, qty){
+    const mrp = money(p.mrp), rate = money(p.rate), discUnit = money(p.discount || Math.max(0, mrp-rate));
+    const base = money(rate * qty);
+    const gst = money(base * (p.gst_pct||0) / 100);
+    const cgst = money(gst/2), sgst = money(gst - cgst);
+    const save = money(discUnit * qty);
+    return { base, gst, cgst, sgst, total: money(base+gst), save, discUnit, mrp, rate };
+  }
+
+  function refreshSelected(){
+    if(!selected){
+      document.getElementById('sel-name').value='';
+      document.getElementById('sel-mrp').value='';
+      document.getElementById('sel-disc').value='';
+      document.getElementById('sel-rate').value='';
+      document.getElementById('sel-line').value='';
+      document.getElementById('sel-gst').textContent='0%';
+      document.getElementById('sel-save').textContent=fmt(0);
+      document.getElementById('sel-stock').textContent='—';
+      document.getElementById('sel-stock').className='';
+      return;
+    }
+    const qty = Math.max(0.01, Number(qtyEl.value)||1);
+    const c = lineCalc(selected, qty);
+    document.getElementById('sel-name').value = selected.name + ' ('+selected.sku+')';
+    document.getElementById('sel-mrp').value = c.mrp.toFixed(2);
+    document.getElementById('sel-disc').value = c.discUnit.toFixed(2);
+    document.getElementById('sel-rate').value = c.rate.toFixed(2);
+    document.getElementById('sel-line').value = fmt(c.total);
+    document.getElementById('sel-gst').textContent =
+      (selected.gst_pct||0)+'% ('+MSG.cgst+' '+fmt(c.cgst)+' + '+MSG.sgst+' '+fmt(c.sgst)+') = '+fmt(c.gst);
+    document.getElementById('sel-save').textContent = fmt(c.save);
+    const st = document.getElementById('sel-stock');
+    st.textContent = selected.stock != null ? selected.stock : '—';
+    st.className = stockClass(Number(selected.stock)||0);
+  }
+
+  function pickProduct(p){
+    selected = {
+      id:p.id, sku:p.sku, name:p.name, mrp:p.mrp, discount:p.discount,
+      rate:p.rate||p.price, cost:p.cost||0, gst_pct:p.gst_pct||0, stock:p.stock
+    };
+    qtyEl.value = 1;
+    suggest.classList.remove('open');
+    statusEl.textContent = '';
+    q.value = p.sku;
+    refreshSelected();
+    qtyEl.focus();
+    qtyEl.select();
+  }
+
+  function addSelected(){
+    if(!selected) return;
+    const qty = Math.max(0.01, Number(qtyEl.value)||1);
+    const found = cart.find(x=>x.product_id===selected.id);
+    const newQty = found ? money(found.qty + qty) : qty;
+    if(selected.stock != null && newQty > money(selected.stock)){
+      const err=document.getElementById('bill-err');
+      err.textContent = MSG.insufficientStock + ' (' + selected.name + ': ' + selected.stock + ')';
+      err.style.display='block';
+      return;
+    }
+    if(found) found.qty = newQty;
+    else cart.push({
+      product_id:selected.id, sku:selected.sku, name:selected.name,
+      mrp:selected.mrp, discount:selected.discount, rate:selected.rate,
+      unit_price:selected.rate, qty:qty, gst_pct:selected.gst_pct, cost:selected.cost,
+      stock: selected.stock
+    });
+    selected=null; q.value=''; refreshSelected(); renderCart(); q.focus();
+    document.getElementById('bill-err').style.display='none';
+  }
+
+  function applyCartQty(idx, raw, opts){
+    opts = opts || {};
+    const it = cart[idx];
+    if(!it) return;
+    let qty = Math.max(0.01, Number(raw)||0.01);
+    if(it.stock != null && qty > money(it.stock)){
+      const err=document.getElementById('bill-err');
+      err.textContent = MSG.insufficientStock + ' (' + it.name + ': ' + it.stock + ')';
+      err.style.display='block';
+      qty = money(it.stock) || 0.01;
+    } else {
+      document.getElementById('bill-err').style.display='none';
+    }
+    it.qty = qty;
+    // Update row totals without full re-render (keeps focus in qty box)
+    const tr = cartBody.querySelector('tr[data-idx="'+idx+'"]');
+    if(tr && !opts.full){
+      const c = lineCalc(it, it.qty);
+      const cells = tr.querySelectorAll('td');
+      if(cells[2]) cells[2].textContent = fmt(c.mrp);
+      if(cells[3]) cells[3].textContent = fmt(c.discUnit);
+      if(cells[4]) cells[4].textContent = fmt(c.rate);
+      if(cells[5]) cells[5].innerHTML = (it.gst_pct||0)+'%<div style="font-size:11px;color:var(--text-secondary)">'+MSG.cgst+' '+fmt(c.cgst)+' / '+MSG.sgst+' '+fmt(c.sgst)+'</div>';
+      if(cells[6]) cells[6].textContent = fmt(c.total);
+      if(cells[7]){ cells[7].textContent = fmt(c.save); cells[7].className='saving'; }
+      const inp = tr.querySelector('.qty-inp');
+      if(inp && String(inp.value) !== String(it.qty)) inp.value = it.qty;
+      updateTotals();
+      return;
+    }
+    renderCart();
+  }
+
+  function renderCart(){
+    const empty = document.getElementById('empty-row');
+    const focusIdx = document.activeElement && document.activeElement.classList.contains('qty-inp')
+      ? document.activeElement.getAttribute('data-i') : null;
+    [...cartBody.querySelectorAll('tr:not(#empty-row)')].forEach(r=>r.remove());
+    if(!cart.length){ if(empty) empty.style.display=''; updateTotals(); return; }
+    if(empty) empty.style.display='none';
+    cart.forEach((it, idx)=>{
+      const c = lineCalc(it, it.qty);
+      const tr = document.createElement('tr');
+      tr.dataset.idx = String(idx);
+      tr.innerHTML = '<td><strong>'+esc(it.name)+'</strong><div style="font-size:11px;color:var(--text-secondary)">'+esc(it.sku)+'</div></td>'
+        + '<td><input class="qty-inp" data-i="'+idx+'" type="number" min="0.01" step="0.01" value="'+it.qty+'" title="Edit quantity"></td>'
+        + '<td>'+fmt(c.mrp)+'</td><td>'+fmt(c.discUnit)+'</td><td>'+fmt(c.rate)+'</td>'
+        + '<td>'+(it.gst_pct||0)+'%<div style="font-size:11px;color:var(--text-secondary)">'+MSG.cgst+' '+fmt(c.cgst)+' / '+MSG.sgst+' '+fmt(c.sgst)+'</div></td>'
+        + '<td>'+fmt(c.total)+'</td><td class="saving">'+fmt(c.save)+'</td>'
+        + '<td><button type="button" class="btn btn-sm btn-danger" data-rm="'+idx+'">'+esc(MSG.remove)+'</button></td>';
+      cartBody.appendChild(tr);
+    });
+    cartBody.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{ cart.splice(+b.dataset.rm,1); renderCart(); });
+    cartBody.querySelectorAll('.qty-inp').forEach(inp=>{
+      inp.addEventListener('input', ()=> applyCartQty(+inp.dataset.i, inp.value));
+      inp.addEventListener('change', ()=> applyCartQty(+inp.dataset.i, inp.value));
+      inp.addEventListener('keydown', e=>{
+        if(e.key==='Enter'){ e.preventDefault(); applyCartQty(+inp.dataset.i, inp.value); q.focus(); }
+      });
+    });
+    if(focusIdx != null){
+      const el = cartBody.querySelector('.qty-inp[data-i="'+focusIdx+'"]');
+      if(el){ el.focus(); el.select(); }
+    }
+    updateTotals();
+  }
+
+  function updateTotals(){
+    let sub=0, disc=0, tax=0, cgst=0, sgst=0;
+    cart.forEach(it=>{ const c=lineCalc(it,it.qty); sub+=c.base; disc+=c.save; tax+=c.gst; cgst+=c.cgst; sgst+=c.sgst; });
+    document.getElementById('subtotal').textContent=fmt(sub);
+    document.getElementById('disc-show').textContent=fmt(disc);
+    document.getElementById('cgst-show').textContent=fmt(cgst);
+    document.getElementById('sgst-show').textContent=fmt(sgst);
+    document.getElementById('tax-show').textContent=fmt(tax);
+    document.getElementById('grand').textContent=fmt(sub+tax);
+  }
+
+  async function search(term){
+    const my=++seq; statusEl.textContent='…'; activeIdx=-1;
+    try{
+      const r = await fetch('/api/products/search?q='+encodeURIComponent(term||''), {credentials:'same-origin'});
+      if(my!==seq) return;
+      const rows = await r.json();
+      suggest.innerHTML='';
+      if(!Array.isArray(rows)||!rows.length){
+        suggest.innerHTML='<div style="padding:12px;color:var(--text-secondary)">'+esc(MSG.noResults)+'</div>';
+        suggest.classList.add('open'); statusEl.textContent=MSG.noResults; return;
+      }
+      rows.forEach((p,i)=>{
+        const b=document.createElement('button'); b.type='button'; b.dataset.i=i;
+        const stCls = stockClass(Number(p.stock)||0);
+        b.innerHTML='<strong>'+esc(p.name)+'</strong><span class="meta">'+esc(p.sku)
+          +' · '+esc(MSG.stock)+' <span class="'+stCls+'">'+esc(p.stock)+'</span>'
+          +' · '+esc(MSG.mrp)+' '+fmt(p.mrp)+' · '+esc(MSG.disc)+' '+fmt(p.discount)+' · '+esc(MSG.rate)+' '+fmt(p.rate)+' · '+esc(MSG.gst)+' '+p.gst_pct+'%</span>';
+        b.addEventListener('mousedown', e=>{ e.preventDefault(); pickProduct(p); });
+        suggest.appendChild(b);
+      });
+      suggest._rows = rows;
+      suggest.classList.add('open');
+      statusEl.textContent = rows.length+' — '+MSG.searchNavHint;
+    }catch(e){ statusEl.textContent=e.message||MSG.genericError; }
+  }
+
+  function moveActive(delta){
+    const buttons=[...suggest.querySelectorAll('button')];
+    if(!buttons.length) return;
+    activeIdx = (activeIdx+delta+buttons.length)%buttons.length;
+    buttons.forEach((b,i)=>b.classList.toggle('active', i===activeIdx));
+    buttons[activeIdx].scrollIntoView({block:'nearest'});
+  }
+
+  q.addEventListener('input', ()=>{ clearTimeout(timer); timer=setTimeout(()=>search(q.value.trim()),110); });
+  q.addEventListener('focus', ()=>{ if(q.value.trim()) search(q.value.trim()); });
+
+  async function addFromBarcode(code){
+    const r = await fetch('/api/products/barcode?code='+encodeURIComponent(code),{credentials:'same-origin'});
+    const d = await r.json();
+    if(d.ok && d.product){
+      pickProduct(d.product);
+      qtyEl.value = 1;
+      addSelected();
+      q.value = '';
+      suggest.classList.remove('open');
+      suggest._rows = [];
+      activeIdx = -1;
+      statusEl.textContent = MSG.addedViaScan+': '+d.product.name;
+      q.focus();
+      return true;
+    }
+    return false;
+  }
+
+  q.addEventListener('keydown', async e=>{
+    if(e.key==='ArrowDown'){ e.preventDefault(); moveActive(1); return; }
+    if(e.key==='ArrowUp'){ e.preventDefault(); moveActive(-1); return; }
+    if(e.key==='Tab' && suggest.classList.contains('open') && (suggest._rows||[])[0] && !selected){
+      e.preventDefault();
+      pickProduct(suggest._rows[activeIdx>=0?activeIdx:0]);
+      return;
+    }
+    if(e.key!=='Enter') return;
+    e.preventDefault();
+    const code = q.value.trim();
+    if(!code) return;
+    // Scanner / exact barcode → add to bill immediately
+    const added = await addFromBarcode(code);
+    if(added) return;
+    const rows=suggest._rows||[];
+    if(activeIdx>=0 && rows[activeIdx]){ pickProduct(rows[activeIdx]); return; }
+    if(rows[0]){ pickProduct(rows[0]); return; }
+    statusEl.textContent = MSG.barcodeNotFound;
+  });
+
+  // Mobile / webcam barcode — live stream (HTTPS) + photo capture (works on HTTP)
+  (function camScan(){
+    const modal=document.getElementById('bp-scan-modal');
+    const btn=document.getElementById('btn-cam-scan');
+    const closeBtn=document.getElementById('bp-scan-close');
+    const fileEl=document.getElementById('bp-scan-file');
+    const scanStatus=document.getElementById('bp-scan-status');
+    const readerEl=document.getElementById('bp-scan-reader');
+    let scanner=null, busyScan=false, lastCode='', lastAt=0, liveRunning=false;
+
+    function setScanMsg(text, isErr){
+      if(!scanStatus) return;
+      scanStatus.textContent=text||'';
+      scanStatus.classList.toggle('err', !!isErr);
+    }
+
+    function barcodeFormats(){
+      try{
+        if(typeof Html5QrcodeSupportedFormats==='undefined') return undefined;
+        return [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.QR_CODE,
+        ];
+      }catch(e){ return undefined; }
+    }
+
+    async function handleCode(decoded){
+      const code=(decoded||'').trim();
+      if(!code||busyScan) return;
+      const now=Date.now();
+      if(code===lastCode && now-lastAt<1500) return;
+      lastCode=code; lastAt=now; busyScan=true;
+      setScanMsg(code+'…');
+      try{
+        const ok=await addFromBarcode(code);
+        if(ok){ await stop(); }
+        else {
+          setScanMsg(MSG.barcodeNotFound+': '+code, true);
+          statusEl.textContent=MSG.barcodeNotFound+': '+code;
+        }
+      } finally { busyScan=false; }
+    }
+
+    async function stopLive(){
+      try{
+        if(scanner){
+          if(liveRunning) await scanner.stop();
+          await scanner.clear();
+        }
+      }catch(e){}
+      liveRunning=false;
+      scanner=null;
+      if(readerEl) readerEl.innerHTML='';
+    }
+
+    async function stop(){
+      await stopLive();
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden','true');
+      setScanMsg('');
+      if(fileEl) fileEl.value='';
+    }
+
+    function openModal(){
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden','false');
+      setScanMsg('');
+    }
+
+    async function startLive(){
+      if(typeof Html5Qrcode==='undefined'){
+        setScanMsg('Camera library failed to load. Check internet / CDN.', true);
+        return;
+      }
+      if(!window.isSecureContext){
+        setScanMsg(MSG.cameraNeedHttps, true);
+        return;
+      }
+      await stopLive();
+      const w=Math.min(280, Math.floor((readerEl.clientWidth||280)*0.85));
+      const formats=barcodeFormats();
+      const cfg={
+        fps: 8,
+        qrbox: { width: w, height: Math.max(80, Math.floor(w*0.4)) },
+        aspectRatio: 1.333,
+        disableFlip: false,
+      };
+      if(formats) cfg.formatsToSupport=formats;
+      scanner=new Html5Qrcode('bp-scan-reader', { verbose: false });
+      const onOk=(decoded)=> { handleCode(decoded); };
+
+      try{
+        const cameras=await Html5Qrcode.getCameras().catch(()=>[]);
+        let camId=null;
+        if(cameras&&cameras.length){
+          const back=cameras.find(c=>/back|rear|environment|world/i.test(c.label||''));
+          camId=(back||cameras[cameras.length-1]).id;
+        }
+        if(camId){
+          await scanner.start(camId, cfg, onOk, ()=>{});
+        } else {
+          await scanner.start(
+            { facingMode: { ideal: 'environment' } },
+            cfg,
+            onOk,
+            ()=>{}
+          );
+        }
+        liveRunning=true;
+        setScanMsg('Camera on — point at barcode');
+      }catch(err){
+        const msg=(err&&(err.message||err.name))||'Camera failed';
+        setScanMsg(msg+'. '+MSG.cameraNeedHttps, true);
+        await stopLive();
+      }
+    }
+
+    async function scanPhoto(file){
+      if(!file) return;
+      if(typeof Html5Qrcode==='undefined'){
+        setScanMsg('Camera library failed to load. Check internet / CDN.', true);
+        return;
+      }
+      setScanMsg('Reading photo…');
+      await stopLive();
+      try{
+        const formats=barcodeFormats();
+        const opts=formats ? { formatsToSupport: formats } : undefined;
+        scanner=new Html5Qrcode('bp-scan-reader', opts||{ verbose:false });
+        const decoded=await scanner.scanFile(file, true);
+        await handleCode(decoded);
+      }catch(err){
+        setScanMsg((err&&err.message)||'Could not read barcode from photo. Try again closer / brighter.', true);
+        try{ if(scanner) await scanner.clear(); }catch(e){}
+        scanner=null;
+      }
+    }
+
+    btn.onclick=async ()=>{
+      openModal();
+      await startLive();
+    };
+    closeBtn.onclick=stop;
+    modal.addEventListener('click', e=>{ if(e.target===modal) stop(); });
+    if(fileEl){
+      fileEl.addEventListener('change', ()=>{
+        const f=fileEl.files&&fileEl.files[0];
+        if(f) scanPhoto(f);
+      });
+    }
+  })();
+
+  qtyEl.addEventListener('input', refreshSelected);
+  qtyEl.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ e.preventDefault(); addSelected(); }
+    else if(e.key==='Tab' && !e.shiftKey){
+      if(selected){
+        e.preventDefault();
+        addSelected();
+      }
+    }
+  });
+  document.getElementById('btn-add').onclick = addSelected;
+
+  const payEl = document.getElementById('payment_mode');
+  const cardWrap = document.getElementById('card-last4-wrap');
+  const cardEl = document.getElementById('card_last4');
+  const splitWrap = document.getElementById('split-wrap');
+  let couponAmt = 0;
+  function syncCardField(){
+    const mode = payEl.value;
+    cardWrap.style.display = mode === 'card' ? 'block' : 'none';
+    splitWrap.style.display = mode === 'split' ? 'block' : 'none';
+    if(mode !== 'card') cardEl.value = '';
+  }
+  payEl.addEventListener('change', syncCardField);
+  cardEl.addEventListener('input', ()=>{ cardEl.value = cardEl.value.replace(/\D/g,'').slice(0,4); });
+  syncCardField();
+
+  document.getElementById('btn-coupon').onclick = async ()=>{
+    const code = (document.getElementById('coupon_code').value||'').trim();
+    const st = document.getElementById('coupon-status');
+    if(!code){ st.textContent=''; couponAmt=0; return; }
+    let sub=0; cart.forEach(it=>{ const c=lineCalc(it,it.qty); sub+=c.base; });
+    const r = await fetch('/api/coupons/check?code='+encodeURIComponent(code)+'&subtotal='+sub,{credentials:'same-origin'});
+    const d = await r.json();
+    if(!d.ok){ couponAmt=0; st.textContent=d.error||''; return; }
+    couponAmt = d.discount_amt||0;
+    st.textContent = '−₹'+couponAmt.toFixed(2);
+  };
+
+  // Recall hold
+  (async function(){
+    const m = location.search.match(/[?&]hold=(\d+)/);
+    if(!m) return;
+    const r = await fetch('/api/holds/'+m[1],{credentials:'same-origin'});
+    const d = await r.json();
+    if(!d.ok) return;
+    (d.hold.items||[]).forEach(it=>cart.push(it));
+    document.getElementById('customer_name').value = d.hold.customer_name||'';
+    document.getElementById('customer_mobile').value = d.hold.customer_mobile||'';
+    renderCart();
+  })();
+
+  document.getElementById('btn-hold').onclick = async function(){
+    const err=document.getElementById('bill-err'); err.style.display='none';
+    if(!cart.length){ err.textContent=MSG.emptyCart; err.style.display='block'; return; }
+    const payload={
+      counter_id:Number(document.getElementById('counter_id').value)||null,
+      customer_name:nameEl.value, customer_mobile:mobileEl.value,
+      items: cart.map(it=>({
+        product_id:it.product_id, sku:it.sku, name:it.name, qty:it.qty,
+        mrp:it.mrp, discount:it.discount, rate:it.rate, unit_price:it.rate,
+        gst_pct:it.gst_pct, cost:it.cost
+      }))
+    };
+    const r=await fetch('/api/holds',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await r.json();
+    if(!data.ok){ err.textContent=data.error||MSG.genericError; err.style.display='block'; return; }
+    alert(MSG.holdOk+': '+data.hold_no);
+    cart.length=0; renderCart();
+  };
+
+  const mobileEl=document.getElementById('customer_mobile');
+  const nameEl=document.getElementById('customer_name');
+  const custStatus=document.getElementById('cust-status');
+  let lastLooked='';
+
+  function digitsOnly(v){ return String(v||'').replace(/\D/g,''); }
+  function setCustStatus(text, cls){
+    custStatus.textContent=text||'';
+    custStatus.className='cust-status'+(cls?(' '+cls):'');
+  }
+  async function lookupCustomer(force){
+    const m=digitsOnly(mobileEl.value).slice(0,10);
+    if(m!==mobileEl.value) mobileEl.value=m;
+    if(m.length<10){
+      if(m.length>0) setCustStatus(MSG.mobileInvalid,'err');
+      else setCustStatus('','');
+      lastLooked='';
+      return false;
+    }
+    if(!force && m===lastLooked) return true;
+    lastLooked=m;
+    try{
+      const r=await fetch('/api/customers/lookup?mobile='+encodeURIComponent(m),{credentials:'same-origin'});
+      const d=await r.json();
+      if(d.found){
+        if(d.name) nameEl.value=d.name;
+        const pts=Number(d.loyalty_points||0);
+        setCustStatus(MSG.customerFound+(d.name?(': '+d.name):'')+(pts?(' · '+MSG.customerPoints+': '+pts):''),'found');
+        return true;
+      }
+      setCustStatus(MSG.customerNew,'new');
+      return true;
+    }catch(_){
+      setCustStatus('','');
+      return true;
+    }
+  }
+  mobileEl.addEventListener('input', ()=>{
+    const m=digitsOnly(mobileEl.value).slice(0,10);
+    mobileEl.value=m;
+    clearTimeout(custTimer);
+    if(m.length<10){ setCustStatus(m.length?MSG.mobileInvalid:'','err'); lastLooked=''; return; }
+    custTimer=setTimeout(()=>lookupCustomer(true),200);
+  });
+  mobileEl.addEventListener('blur', ()=>lookupCustomer(true));
+  mobileEl.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ e.preventDefault(); lookupCustomer(true).then(()=>nameEl.focus()); }
+  });
+
+  document.getElementById('btn-complete').onclick = async function(){
+    const err=document.getElementById('bill-err'); err.style.display='none';
+    const bill_no=(document.getElementById('bill_no').value||'').trim();
+    if(!bill_no){ err.textContent=MSG.billNoRequired; err.style.display='block'; return; }
+    const mobile=digitsOnly(mobileEl.value);
+    if(mobile.length!==10){
+      err.textContent=MSG.mobileRequired; err.style.display='block';
+      setCustStatus(MSG.mobileRequired,'err'); mobileEl.focus(); return;
+    }
+    await lookupCustomer(true);
+    const counter_id=document.getElementById('counter_id').value;
+    if(!counter_id){ err.textContent=MSG.selectCounter; err.style.display='block'; return; }
+    if(!cart.length){ err.textContent=MSG.emptyCart; err.style.display='block'; return; }
+    const payment_mode = payEl.value;
+    const card_last4 = (cardEl.value||'').replace(/\D/g,'');
+    if(payment_mode==='card' && card_last4.length!==4){
+      err.textContent=MSG.cardLast4Required; err.style.display='block'; cardEl.focus(); return;
+    }
+    let payments = [];
+    if(payment_mode==='split'){
+      const cash=money(document.getElementById('split-cash').value);
+      const upi=money(document.getElementById('split-upi').value);
+      const card=money(document.getElementById('split-card').value);
+      if(cash) payments.push({mode:'cash',amount:cash});
+      if(upi) payments.push({mode:'upi',amount:upi});
+      if(card) payments.push({mode:'card',amount:card,card_last4:document.getElementById('split-card-last4').value});
+    }
+    const payload={
+      bill_no, counter_id:Number(counter_id),
+      customer_name:nameEl.value, customer_mobile:mobile,
+      payment_mode, card_last4,
+      bill_discount_pct: Number(document.getElementById('bill_discount_pct').value)||0,
+      bill_discount_amt: 0,
+      coupon_code: document.getElementById('coupon_code').value,
+      loyalty_redeemed: Number(document.getElementById('loyalty_redeem').value)||0,
+      payments,
+      items: cart.map(it=>({
+        product_id:it.product_id, sku:it.sku, name:it.name, qty:it.qty,
+        mrp:it.mrp, discount:it.discount, unit_price:it.rate, rate:it.rate,
+        gst_pct:it.gst_pct, cost:it.cost
+      }))
+    };
+    try{
+      const r=await fetch('/api/bills',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const data=await r.json();
+      if(!data.ok){
+        if(!navigator.onLine && window.OfflineQueue){ OfflineQueue.push(payload); err.textContent='Offline — queued'; err.style.display='block'; return; }
+        err.textContent=data.error||MSG.genericError; err.style.display='block'; return;
+      }
+      window.location='/bills/'+data.bill_id;
+    }catch(ex){
+      if(window.OfflineQueue){ OfflineQueue.push(payload); err.textContent='Offline — queued'; err.style.display='block'; }
+      else { err.textContent=ex.message||MSG.genericError; err.style.display='block'; }
+    }
+  };
+})();
+</script>
+{% endblock %}

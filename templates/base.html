@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
+<style>
+:root{
+  --primary:{{ THEME.primary }};--primary-dark:{{ THEME.primary_dark }};--primary-light:{{ THEME.primary_light }};
+  --accent:{{ THEME.accent }};--success:{{ THEME.success }};--danger:{{ THEME.danger }};
+  --text-primary:{{ THEME.text_primary }};--text-secondary:{{ THEME.text_secondary }};
+  --sidebar-bg:{{ THEME.sidebar_bg }};--sidebar-text:{{ THEME.sidebar_text }};
+  --bg-main:{{ THEME.bg_main }};--card-bg:{{ THEME.card_bg }};
+  --border:{{ THEME.border }};--border-soft:{{ THEME.border_soft }};
+  --input-bg:{{ THEME.input_bg }};--hover-row:{{ THEME.hover_row }};
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;max-width:100%;overflow-x:hidden}
+body{font-family:'Segoe UI','Noto Sans Tamil','Noto Sans Devanagari',system-ui,sans-serif;background:var(--bg-main);color:var(--text-primary);min-height:100vh;position:relative;display:block}
+a{color:inherit;text-decoration:none}
+.app-bg{position:fixed;inset:0;z-index:0;width:100%;height:100%;background-size:cover;background-position:center;background-repeat:no-repeat;opacity:.6}
+/* Soft veil — wallpaper at ~60% without changing UI colours */
+.app-bg-glass{position:fixed;inset:0;z-index:1;width:100%;height:100%;pointer-events:none;background:color-mix(in srgb,var(--bg-main) 35%,transparent)}
+body.has-bg{background:var(--bg-main)}
+body.has-bg .sidebar{z-index:40}
+body.has-bg .main,body.has-bg .login-shell{position:relative;z-index:2}
+body.has-bg .main,body.has-bg .content{background:transparent}
+body.has-bg .login-shell{background:transparent!important}
+body.has-bg .sidebar{background:var(--sidebar-bg)}
+body.has-bg .topbar,body.has-bg .card,body.has-bg .stat,body.has-bg .footer{background:var(--card-bg)}
+body.has-bg .form-control,body.has-bg .lang-switch button,body.has-bg .topbar-user .logout-btn{background:var(--input-bg)}
+.sidebar{width:220px;background:var(--sidebar-bg);color:var(--sidebar-text);position:fixed;inset:0 auto 0 0;display:flex;flex-direction:column;z-index:40}
+.brand{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
+.brand-row{display:flex;align-items:center;gap:10px}
+.brand-logo{height:36px;width:auto;max-width:56px;object-fit:contain;flex-shrink:0;border-radius:6px;background:rgba(255,255,255,.06);padding:2px}
+.brand .logo{font-size:18px;font-weight:800;color:#fff;line-height:1.15}
+.brand .tag{font-size:10px;opacity:.55;margin-top:1px}
+.nav{padding:4px 0 10px;flex:1;overflow:auto}
+.nav-group{margin:6px 0 2px}
+.nav-group:first-child{margin-top:2px}
+.nav-label{
+  display:block;padding:6px 14px 2px;font-size:9px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:rgba(255,255,255,.38);user-select:none
+}
+.nav a{display:flex;padding:6px 14px;font-size:13px;gap:6px;align-items:center;border-radius:0;line-height:1.2}
+.nav a:hover{background:rgba(255,255,255,.07);color:#fff}
+.nav a.active{background:var(--primary);color:#fff}
+.main{margin-left:220px;width:calc(100% - 220px);max-width:calc(100% - 220px);display:flex;flex-direction:column;min-height:100vh;box-sizing:border-box}
+.topbar{height:44px;background:var(--card-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;position:sticky;top:0;z-index:20;width:100%}
+.topbar-title{font-weight:600;flex:1;font-size:14px}
+.lang-switch{display:flex;gap:3px}
+.lang-switch button{border:1px solid var(--border);background:var(--input-bg);color:var(--text-primary);border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer}
+.lang-switch button.on{border-color:var(--primary);color:var(--primary);font-weight:600}
+.topbar-user{display:flex;align-items:center;gap:10px;margin-left:4px;flex-shrink:0}
+.topbar-user-meta{text-align:right;line-height:1.2}
+.topbar-user-meta .name{font-size:12px;font-weight:600;color:var(--text-primary)}
+.topbar-user-meta .role{font-size:10px;color:var(--text-secondary)}
+.topbar-user a{font-size:11.5px;color:var(--text-secondary);white-space:nowrap}
+.topbar-user a:hover{color:var(--primary)}
+.topbar-user .logout-btn{display:inline-flex;align-items:center;gap:3px;padding:4px 9px;border:1px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--text-primary);font-size:11.5px;font-weight:600}
+.topbar-user .logout-btn:hover{border-color:var(--danger);color:var(--danger);background:#fff}
+.content{padding:12px 14px;flex:1;width:100%;max-width:100%;box-sizing:border-box}
+.content > .card,.content > .pos-simple,.content > form{width:100%;max-width:100%}
+.pos-simple{width:100%;max-width:100%}
+
+.card{background:var(--card-bg);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden;margin-bottom:10px}
+.card-header{padding:8px 12px;border-bottom:1px solid var(--border-soft);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card-header h2{font-size:13px;font-weight:700}
+.card-body{padding:10px 12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:12px;align-items:stretch}
+.stat{background:var(--card-bg);border-radius:8px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;flex-direction:column}
+.stat .lbl{font-size:11px;color:var(--text-secondary);font-weight:600;line-height:1.25}
+.stat .val{font-size:18px;font-weight:700;color:var(--primary);margin-top:4px;line-height:1.15}
+.stat .sub{font-size:11px;color:var(--text-secondary);margin-top:auto;padding-top:4px}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:6px;font-size:12.5px;font-weight:500;border:none;cursor:pointer;font-family:inherit;line-height:1.2}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-dark)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text-primary)}
+.btn-sm{padding:4px 8px;font-size:11.5px}
+.btn-danger{background:var(--danger);color:#fff}
+.form-group{margin-bottom:8px}
+.form-label{display:block;font-size:11.5px;font-weight:600;margin-bottom:2px;line-height:1.25;color:var(--text-secondary)}
+.form-control{width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--input-bg);color:var(--text-primary);outline:none;line-height:1.3}
+.form-control:focus{border-color:var(--primary)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end}
+table{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}
+th,td{padding:6px 8px;vertical-align:middle;text-align:left;overflow:hidden;text-overflow:ellipsis}
+th{font-size:11px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg-main) 55%,transparent)}
+td{border-bottom:1px solid var(--border-soft)}
+tr:hover td{background:var(--hover-row)}
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+th.act,td.act{text-align:right;white-space:nowrap}
+th.center,td.center{text-align:center}
+.alert{padding:7px 10px;border-radius:6px;font-size:12.5px;margin-bottom:8px}
+.alert-ok{background:#dcfce7;color:#15803d}
+.alert-err{background:#fee2e2;color:#b91c1c}
+.badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10.5px;background:var(--primary-light);color:var(--primary)}
+.footer{padding:8px 14px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border);background:var(--card-bg)}
+.search-bar{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+.reports-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:900px){.form-row-3,.reports-grid{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}
+.menu-toggle{display:none;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text-primary);font-size:20px;cursor:pointer;flex-shrink:0;padding:0;line-height:1}
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:35;-webkit-tap-highlight-color:transparent}
+.table-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+@media(max-width:900px){
+  .menu-toggle{display:inline-flex}
+  .sidebar{width:min(280px,88vw);transform:translateX(-105%);transition:transform .22s ease;box-shadow:4px 0 24px rgba(0,0,0,.2)}
+  body.nav-open .sidebar{transform:translateX(0)}
+  body.nav-open .sidebar-backdrop{display:block}
+  .main{margin-left:0;width:100%;max-width:100%}
+  .topbar{height:auto;min-height:48px;flex-wrap:wrap;padding:8px 10px;gap:8px;align-items:center}
+  .topbar-title{font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .topbar-user{gap:6px;margin-left:auto}
+  .topbar-user-meta{display:none}
+  .topbar-user a:not(.logout-btn){display:none}
+  .lang-switch button{padding:6px 8px;font-size:12px;min-height:36px}
+  .topbar-user .logout-btn{padding:8px 10px;font-size:12px;min-height:36px}
+  .content{padding:10px}
+  .btn{min-height:40px;padding:8px 12px;font-size:13px}
+  .btn-sm{min-height:34px}
+  .form-control{font-size:16px;padding:10px 12px;min-height:42px} /* 16px avoids iOS zoom */
+  .stats{grid-template-columns:1fr 1fr}
+  .card-header{flex-wrap:wrap}
+  .search-bar{flex-direction:column;align-items:stretch}
+  .nav a{padding:10px 16px;font-size:14px;min-height:44px}
+  #bp-assistant-fab{width:48px;height:48px;bottom:max(12px,env(safe-area-inset-bottom));right:max(12px,env(safe-area-inset-right));font-size:20px}
+  #bp-assistant-panel{width:calc(100vw - 16px);max-width:calc(100vw - 16px);height:min(70vh,560px);max-height:calc(100dvh - 24px);bottom:auto;right:auto;border-radius:14px}
+}
+@media(max-width:480px){
+  .stats{grid-template-columns:1fr}
+  .brand .logo{font-size:16px}
+}
+@media print{.sidebar,.sidebar-backdrop,.menu-toggle,.topbar,.no-print,.footer,.app-bg,.app-bg-glass{display:none!important}.main{margin:0!important;width:100%!important;max-width:100%!important}}
+/* Compact helpers */
+.form-group.tight,.form-group.mb-0{margin-bottom:0}
+.cust-status{font-size:11px;min-height:14px;margin-top:2px;line-height:1.25}
+.cust-status.found{color:var(--success);font-weight:600}
+.cust-status.new{color:#b45309}
+.cust-status.err{color:var(--danger)}
+/* ── Data Assistant widget ── */
+#bp-assistant-fab{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:var(--sidebar-bg);color:#fff;border:none;cursor:grab;box-shadow:0 4px 20px rgba(0,0,0,.25);z-index:1000;display:flex;align-items:center;justify-content:center;font-size:22px;touch-action:none;user-select:none}
+#bp-assistant-fab:active{cursor:grabbing}
+#bp-assistant-fab.dragging{transform:none;opacity:.92;cursor:grabbing}
+#bp-assistant-fab:hover{background:var(--primary)}
+#bp-assistant-panel{position:fixed;bottom:92px;right:24px;width:400px;max-width:calc(100vw - 48px);height:520px;max-height:calc(100vh - 120px);background:#fff;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.18);z-index:1000;display:none;flex-direction:column;overflow:hidden;border:1px solid #e5e7eb}
+#bp-assistant-panel.open{display:flex}
+.bp-asst-header{background:var(--sidebar-bg);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.bp-asst-header h3{font-size:15px;font-weight:700;flex:1;margin:0}
+.bp-asst-header small{font-size:11px;opacity:.75;display:block}
+.bp-asst-close{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;opacity:.8}
+.bp-asst-body{flex:1;overflow-y:auto;padding:14px;background:radial-gradient(circle at 1px 1px,#e5e7eb 1px,transparent 0);background-size:16px 16px;background-color:#f8fafc}
+.bp-asst-msg{background:#fff;border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.5;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.bp-asst-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.bp-asst-chips[data-collapsed="0"]{max-height:150px;overflow-y:auto;padding-right:4px}
+.bp-asst-chip{background:#fff;border:1px solid #d1d5db;border-radius:20px;padding:5px 11px;font-size:11.5px;cursor:pointer;color:#374151;font-family:inherit}
+.bp-asst-chip:hover{border-color:var(--primary);color:var(--primary)}
+.bp-asst-chips-more{background:none;border:none;color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;padding:2px 0 8px;font-family:inherit}
+.bp-asst-chips-more:hover{text-decoration:underline}
+.bp-asst-chips-more[hidden]{display:none!important}
+.bp-asst-result{background:#fff;border-radius:10px;overflow:hidden;margin-top:8px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.bp-asst-result table{width:100%;font-size:11px;border-collapse:collapse}
+.bp-asst-result th,.bp-asst-result td{padding:6px 8px;border-bottom:1px solid #eee;text-align:left}
+.bp-asst-result th{background:#f3f4f6;font-weight:600}
+.bp-asst-footer{padding:12px;border-top:1px solid #e5e7eb;background:#fff;flex-shrink:0}
+.bp-asst-input-row{display:flex;gap:8px}
+.bp-asst-input-row input{flex:1;padding:10px 14px;border:1px solid #d1d5db;border-radius:24px;font-size:13px;outline:none;font-family:inherit}
+.bp-asst-input-row button{width:40px;height:40px;border-radius:50%;background:var(--primary);color:#fff;border:none;cursor:pointer;font-size:16px;flex-shrink:0}
+.bp-asst-shop{margin-bottom:8px}
+.bp-asst-shop select{width:100%;padding:6px 10px;border-radius:8px;border:1px solid #d1d5db;font-size:12px;font-family:inherit}
+.bp-asst-meta{font-size:11px;color:#6b7280;margin-top:6px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.bp-asst-dl{background:none;border:none;color:var(--primary);font-size:11px;cursor:pointer;text-decoration:underline;font-family:inherit}
+@media print { #bp-assistant-fab, #bp-assistant-panel { display:none !important; } }
+</style>
+
+{% block head %}{% endblock %}
+</head>
+<body class="{% if APP_BG_URL %}has-bg{% endif %}">
+{% if APP_BG_URL %}
+<div class="app-bg" style="background-image:url('{{ APP_BG_URL }}')"></div>
+<div class="app-bg-glass" aria-hidden="true"></div>
+{% endif %}
+{% if user %}
+<div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+<aside class="sidebar" id="app-sidebar">
+  <div class="brand">
+    <div class="brand-row">
+      {% if APP_LOGO_URL %}<img src="{{ APP_LOGO_URL }}" alt="" class="brand-logo">{% endif %}
+      <div>
+        <div class="logo">{{ APP_NAME }}</div>
+        <div class="tag">{{ APP_TAGLINE }}</div>
+      </div>
+    </div>
+  </div>
+  <nav class="nav">
+    {% if can_page('dashboard') or can_page('reports') or can_page('shifts') or can_page('day_close') %}
+    <div class="nav-group">
+      <span class="nav-label">{{ t('nav_overview') }}</span>
+      {% if can_page('dashboard') %}<a href="/dashboard" class="{{ 'active' if active=='dashboard' }}">📊 {{ t('dashboard') }}</a>{% endif %}
+      {% if can_page('reports') %}<a href="/reports" class="{{ 'active' if active=='reports' }}">📈 {{ t('reports') }}</a>{% endif %}
+      {% if can_page('shifts') %}<a href="/shifts" class="{{ 'active' if active=='shifts' }}">🕒 {{ t('shifts') }}</a>{% endif %}
+      {% if can_page('day_close') and is_admin %}<a href="/day-close" class="{{ 'active' if active=='day_close' }}">🔒 {{ t('day_close') }}</a>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if can_page('billing') or can_page('holds') or can_page('bills') or can_page('returns') or can_page('credit') %}
+    <div class="nav-group">
+      <span class="nav-label">{{ t('nav_billing') }}</span>
+      {% if can_page('billing') %}<a href="/billing" class="{{ 'active' if active=='billing' }}">🧾 {{ t('new_bill') }}</a>{% endif %}
+      {% if can_page('holds') %}<a href="/holds" class="{{ 'active' if active=='holds' }}">⏸️ {{ t('holds') }}</a>{% endif %}
+      {% if can_page('bills') %}<a href="/bills" class="{{ 'active' if active=='bills' }}">📄 {{ t('bills') }}</a>{% endif %}
+      {% if can_page('returns') %}<a href="/returns" class="{{ 'active' if active=='returns' }}">↩️ {{ t('returns') }}</a>{% endif %}
+      {% if can_page('credit') %}<a href="/credit" class="{{ 'active' if active=='credit' }}">💳 {{ t('credit_sales') }}</a>{% endif %}
+      {% if can_page('day_close') and not is_admin %}<a href="/day-close" class="{{ 'active' if active=='day_close' }}">🔒 {{ t('day_close') }}</a>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if can_page('stock') or can_page('reorder') or can_page('products') or can_page('purchases') or can_page('warehouses') or can_page('batches') %}
+    <div class="nav-group">
+      <span class="nav-label">{{ t('nav_inventory') }}</span>
+      {% if can_page('stock') %}<a href="/stock" class="{{ 'active' if active=='stock' }}">📋 {{ t('stock') }}</a>{% endif %}
+      {% if can_page('reorder') %}<a href="/reorder" class="{{ 'active' if active=='reorder' }}">⚠️ {{ t('reorder') }}</a>{% endif %}
+      {% if can_page('products') %}<a href="/products" class="{{ 'active' if active=='products' }}">📦 {{ t('products') }}</a>{% endif %}
+      {% if can_page('purchases') %}<a href="/purchases" class="{{ 'active' if active=='purchases' }}">📥 {{ t('purchases') }}</a>{% endif %}
+      {% if can_page('warehouses') %}<a href="/warehouses" class="{{ 'active' if active=='warehouses' }}">🏭 {{ t('warehouses') }}</a>{% endif %}
+      {% if can_page('batches') %}<a href="/batches" class="{{ 'active' if active=='batches' }}">🏷️ {{ t('batches') }}</a>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if can_page('loyalty') or can_page('coupons') %}
+    <div class="nav-group">
+      <span class="nav-label">{{ t('nav_customers') }}</span>
+      {% if can_page('loyalty') %}<a href="/loyalty" class="{{ 'active' if active=='loyalty' }}">⭐ {{ t('loyalty') }}</a>{% endif %}
+      {% if can_page('coupons') %}<a href="/coupons" class="{{ 'active' if active=='coupons' }}">🎟️ {{ t('coupons') }}</a>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if can_page('gst_export') or can_page('audit') %}
+    <div class="nav-group">
+      <span class="nav-label">{{ t('nav_reports_tax') }}</span>
+      {% if can_page('gst_export') %}<a href="/gst-export" class="{{ 'active' if active=='gst' }}">📑 {{ t('gst_export') }}</a>{% endif %}
+      {% if can_page('audit') %}<a href="/audit" class="{{ 'active' if active=='audit' }}">📝 {{ t('audit') }}</a>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if can_page('shops') or can_page('counters') or can_page('employees') or can_page('permissions') or can_page('offline') or can_page('settings') or can_page('features') %}
+    <div class="nav-group">
+      <span class="nav-label">{{ t('nav_admin') }}</span>
+      {% if can_page('shops') %}<a href="/shops" class="{{ 'active' if active=='shops' }}">🏢 {{ t('shops') }}</a>{% endif %}
+      {% if can_page('counters') %}<a href="/counters" class="{{ 'active' if active=='counters' }}">🏪 {{ t('counters') }}</a>{% endif %}
+      {% if can_page('employees') %}<a href="/employees" class="{{ 'active' if active=='employees' }}">👥 {{ t('employees') }}</a>{% endif %}
+      {% if can_page('permissions') %}<a href="/permissions" class="{{ 'active' if active=='permissions' }}">🔐 {{ t('assign_pages') }}</a>{% endif %}
+      {% if can_page('offline') %}<a href="/offline" class="{{ 'active' if active=='offline' }}">📴 {{ t('offline') }}</a>{% endif %}
+      {% if can_page('settings') %}<a href="/settings" class="{{ 'active' if active=='settings' }}">⚙️ {{ t('settings') }}</a>{% endif %}
+    </div>
+    {% endif %}
+  </nav>
+</aside>
+<div class="main">
+  <header class="topbar no-print">
+    <button type="button" class="menu-toggle" id="menu-toggle" aria-label="Menu" aria-controls="app-sidebar" aria-expanded="false">☰</button>
+    <div class="topbar-title">{% block page_title %}{{ APP_NAME }}{% endblock %}</div>
+    <form class="lang-switch" method="post">
+      {% for code,label in langs.items() %}
+      <button formaction="/lang/{{ code }}" class="{{ 'on' if lang==code }}">{{ label }}</button>
+      {% endfor %}
+    </form>
+    <div class="topbar-user">
+      <div class="topbar-user-meta">
+        <div class="name">{{ user.name }}</div>
+        <div class="role">{% if user.role == 'superadmin' %}{{ t('superadmin') }}{% elif user.role == 'admin' %}{{ t('admin') }}{% elif user.role == 'cashier' %}{{ t('cashier') }}{% else %}{{ user.role }}{% endif %}</div>
+      </div>
+      <a href="/my-theme" title="{{ t('my_theme') }}">🎨 {{ t('my_theme') }}</a>
+      <a href="/logout" class="logout-btn">{{ t('logout') }} →</a>
+    </div>
+  </header>
+  <main class="content">{% block content %}{% endblock %}</main>
+  <footer class="footer">© {{ COMPANY_YEAR }} {{ COMPANY_NAME }} · {{ COMPANY_EMAIL }}</footer>
+</div>
+{% else %}
+{% block body_auth %}{% endblock %}
+{% endif %}
+{% if user and show_assistant %}
+<button type="button" id="bp-assistant-fab" title="Data Assistant" aria-label="Open Data Assistant">📊</button>
+<div id="bp-assistant-panel" role="dialog" aria-label="BillingPro Data Assistant">
+  <div class="bp-asst-header">
+    <div>
+      <h3>{{ APP_NAME }} Assistant</h3>
+      <small>● {% if is_superadmin %}All shops{% else %}Your shop only{% endif %}</small>
+    </div>
+    <button type="button" class="bp-asst-close" id="bp-asst-close" aria-label="Close">×</button>
+  </div>
+  <div class="bp-asst-body" id="bp-asst-body">
+    <div class="bp-asst-msg">Hi {{ user.name }}! Ask about sales, products, stock, bills, GST, credit or cashiers.
+      {% if is_superadmin %}You can view all shops or filter one shop below.{% else %}Results are limited to your shop. Cross-shop questions are blocked.{% endif %}
+      CSV download available on results.</div>
+    <div class="bp-asst-chips" id="bp-asst-chips" data-collapsed="1">
+      {% for chip in suggestion_chips[:10] %}
+      <button type="button" class="bp-asst-chip" data-q="{{ chip }}">{{ chip }}</button>
+      {% endfor %}
+    </div>
+    {% if suggestion_chips|length > 10 %}
+    <button type="button" class="bp-asst-chips-more" id="bp-asst-chips-more">More ({{ suggestion_chips|length - 10 }}) ▾</button>
+    {% else %}
+    <button type="button" class="bp-asst-chips-more" id="bp-asst-chips-more" hidden>More ▾</button>
+    {% endif %}
+    <div id="bp-asst-results"></div>
+  </div>
+  <div class="bp-asst-footer">
+    {% if is_superadmin %}
+    <div class="bp-asst-shop">
+      <select id="bp-asst-shop">
+        <option value="">All shops</option>
+      </select>
+    </div>
+    {% else %}
+    <div class="bp-asst-shop">
+      <select id="bp-asst-shop" disabled>
+        <option value="">My shop only</option>
+      </select>
+    </div>
+    {% endif %}
+    <div class="bp-asst-input-row">
+      <input type="text" id="bp-asst-input" placeholder="Ask anything about your data…" autocomplete="off">
+      <button type="button" id="bp-asst-send" title="Send">➤</button>
+    </div>
+  </div>
+</div>
+<script type="application/json" id="bp-asst-chips-data">{{ suggestion_chips | tojson }}</script>
+<script>
+(function(){
+  const panel=document.getElementById('bp-assistant-panel');
+  const fab=document.getElementById('bp-assistant-fab');
+  const closeBtn=document.getElementById('bp-asst-close');
+  const input=document.getElementById('bp-asst-input');
+  const sendBtn=document.getElementById('bp-asst-send');
+  const chipsEl=document.getElementById('bp-asst-chips');
+  const moreBtn=document.getElementById('bp-asst-chips-more');
+  const resultsEl=document.getElementById('bp-asst-results');
+  const shopEl=document.getElementById('bp-asst-shop');
+  const CHIP_LIMIT=10;
+  let allChips=[];
+  let expanded=false;
+  let lastQuestion='';
+  let busy=false;
+  const isSuper={{ 'true' if is_superadmin else 'false' }};
+  const POS_KEY='bp_asst_fab_pos';
+
+  function placePanelNearFab(){
+    const fr=fab.getBoundingClientRect();
+    const pw=Math.min(400, window.innerWidth-24);
+    const ph=Math.min(520, window.innerHeight-24);
+    let left=fr.left+fr.width/2-pw/2;
+    let top=fr.top-ph-12;
+    if(top<8) top=fr.bottom+12;
+    left=Math.max(8, Math.min(left, window.innerWidth-pw-8));
+    top=Math.max(8, Math.min(top, window.innerHeight-ph-8));
+    panel.style.left=left+'px';
+    panel.style.top=top+'px';
+    panel.style.right='auto';
+    panel.style.bottom='auto';
+  }
+
+  function applyFabPos(left, top){
+    const size=56;
+    left=Math.max(8, Math.min(left, window.innerWidth-size-8));
+    top=Math.max(8, Math.min(top, window.innerHeight-size-8));
+    fab.style.left=left+'px';
+    fab.style.top=top+'px';
+    fab.style.right='auto';
+    fab.style.bottom='auto';
+    if(panel.classList.contains('open')) placePanelNearFab();
+    return {left, top};
+  }
+
+  function loadFabPos(){
+    try{
+      const raw=localStorage.getItem(POS_KEY);
+      if(!raw) return;
+      const p=JSON.parse(raw);
+      if(p&&typeof p.left==='number'&&typeof p.top==='number') applyFabPos(p.left,p.top);
+    }catch(e){}
+  }
+  loadFabPos();
+
+  (function enableDrag(){
+    let dragging=false, moved=false, sx=0, sy=0, ol=0, ot=0;
+    function pt(e){ return e.touches&&e.touches[0]?e.touches[0]:e; }
+    function onDown(e){
+      const p=pt(e);
+      dragging=true; moved=false;
+      const r=fab.getBoundingClientRect();
+      ol=r.left; ot=r.top; sx=p.clientX; sy=p.clientY;
+      fab.classList.add('dragging');
+      e.preventDefault();
+    }
+    function onMove(e){
+      if(!dragging) return;
+      const p=pt(e);
+      const dx=p.clientX-sx, dy=p.clientY-sy;
+      if(Math.abs(dx)>4||Math.abs(dy)>4) moved=true;
+      applyFabPos(ol+dx, ot+dy);
+    }
+    function onUp(){
+      if(!dragging) return;
+      dragging=false;
+      fab.classList.remove('dragging');
+      const r=fab.getBoundingClientRect();
+      try{ localStorage.setItem(POS_KEY, JSON.stringify({left:r.left, top:r.top})); }catch(e){}
+      if(!moved){
+        panel.classList.toggle('open');
+        if(panel.classList.contains('open')) placePanelNearFab();
+      }
+    }
+    fab.addEventListener('mousedown', onDown);
+    fab.addEventListener('touchstart', onDown, {passive:false});
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, {passive:false});
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchend', onUp);
+    window.addEventListener('resize', function(){
+      const r=fab.getBoundingClientRect();
+      applyFabPos(r.left, r.top);
+    });
+  })();
+
+  closeBtn.onclick=()=>panel.classList.remove('open');
+
+  function shopFilter(){
+    if(!shopEl||shopEl.disabled) return '';
+    return shopEl.value||'';
+  }
+  function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
+
+  function renderChips(){
+    chipsEl.innerHTML='';
+    const list=expanded?allChips:allChips.slice(0,CHIP_LIMIT);
+    list.forEach(function(c){
+      const b=document.createElement('button');
+      b.type='button'; b.className='bp-asst-chip';
+      b.setAttribute('data-q',c); b.textContent=c;
+      chipsEl.appendChild(b);
+    });
+    chipsEl.setAttribute('data-collapsed', expanded?'0':'1');
+    if(allChips.length>CHIP_LIMIT){
+      moreBtn.hidden=false;
+      moreBtn.textContent=expanded?'Show less ▴':('More ('+(allChips.length-CHIP_LIMIT)+') ▾');
+    }else{
+      moreBtn.hidden=true;
+    }
+  }
+
+  try{
+    const raw=document.getElementById('bp-asst-chips-data');
+    allChips=JSON.parse(raw.textContent||'[]')||[];
+  }catch(e){ allChips=[]; }
+  if(!allChips.length){
+    chipsEl.querySelectorAll('button[data-q]').forEach(function(b){
+      const t=(b.getAttribute('data-q')||'').trim();
+      if(t) allChips.push(t);
+    });
+  }
+  if(allChips.length) renderChips();
+
+  fetch('/api/assistant/suggestions',{credentials:'same-origin'})
+    .then(r=>r.json())
+    .then(function(data){
+      if(data.chips&&data.chips.length){ allChips=data.chips; renderChips(); }
+      if(isSuper&&data.shops&&shopEl){
+        const cur=shopEl.value;
+        shopEl.innerHTML='<option value="">All shops</option>';
+        data.shops.forEach(function(s){
+          const o=document.createElement('option');
+          o.value=String(s.id);
+          o.textContent=s.name+(s.code?(' ('+s.code+')'):'');
+          shopEl.appendChild(o);
+        });
+        shopEl.value=cur||'';
+      }
+    }).catch(function(){});
+
+  chipsEl.addEventListener('click',function(e){
+    const btn=e.target.closest('button[data-q]');
+    if(!btn||!chipsEl.contains(btn)) return;
+    e.preventDefault();
+    const q=btn.getAttribute('data-q');
+    input.value=q;
+    runQuery(q);
+  });
+  moreBtn.addEventListener('click',function(e){
+    e.preventDefault();
+    expanded=!expanded;
+    renderChips();
+  });
+
+  function renderTable(data){
+    if(!data.rows||!data.rows.length){
+      resultsEl.innerHTML='<div class="bp-asst-msg"><strong>'+esc(data.title||'No results')+'</strong><br>No rows matched. Try another chip or widen the date range.</div>';
+      return;
+    }
+    let h='<div class="bp-asst-msg"><strong>'+esc(data.title)+'</strong> ('+data.row_count+' rows)</div><div class="bp-asst-result"><table><thead><tr>';
+    data.columns.forEach(c=>{h+='<th>'+esc(c)+'</th>';});
+    h+='</tr></thead><tbody>';
+    data.rows.slice(0,50).forEach(row=>{
+      h+='<tr>';row.forEach(cell=>{h+='<td>'+esc(cell)+'</td>';});h+='</tr>';
+    });
+    h+='</tbody></table></div>';
+    if(data.rows.length>50) h+='<div class="bp-asst-meta">Showing first 50 of '+data.rows.length+' rows</div>';
+    h+='<div class="bp-asst-meta"><span>'+esc(data.sql_hint||'')+'</span><button type="button" class="bp-asst-dl" id="bp-asst-dl">⬇ Download CSV</button></div>';
+    resultsEl.innerHTML=h;
+    document.getElementById('bp-asst-dl').onclick=downloadCsv;
+  }
+  async function runQuery(q){
+    if(!q||busy) return;
+    busy=true; lastQuestion=q;
+    resultsEl.innerHTML='<div class="bp-asst-msg">Querying…</div>';
+    try{
+      const res=await fetch('/api/assistant/query',{
+        method:'POST',
+        credentials:'same-origin',
+        headers:{'Content-Type':'application/json','Accept':'application/json'},
+        body:JSON.stringify({question:q,shop_filter:shopFilter()})
+      });
+      const text=await res.text();
+      let data;
+      try{ data=text?JSON.parse(text):{}; }
+      catch(_){
+        resultsEl.innerHTML='<div class="bp-asst-msg" style="color:#b91c1c">Server returned HTML instead of JSON (HTTP '+res.status+'). Restart BillingPro and hard-refresh (Ctrl+F5).</div>';
+        return;
+      }
+      if(!res.ok||data.error){
+        resultsEl.innerHTML='<div class="bp-asst-msg" style="color:#b91c1c">'+esc(data.error||('Request failed (HTTP '+res.status+')'))+'</div>';
+        return;
+      }
+      renderTable(data);
+    }catch(err){
+      resultsEl.innerHTML='<div class="bp-asst-msg" style="color:#b91c1c">Network error: '+esc(err.message||err)+'</div>';
+    }finally{
+      busy=false;
+    }
+  }
+  async function downloadCsv(){
+    if(!lastQuestion)return;
+    try{
+      const res=await fetch('/api/assistant/csv',{
+        method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json','Accept':'application/json'},
+        body:JSON.stringify({question:lastQuestion,shop_filter:shopFilter()})
+      });
+      if(!res.ok){
+        const data=await res.json().catch(()=>({}));
+        alert(data.error||'CSV download failed');
+        return;
+      }
+      const blob=await res.blob();
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);a.download='billingpro_query.csv';a.click();
+    }catch(err){ alert('CSV download failed: '+err.message); }
+  }
+  sendBtn.onclick=()=>{const q=input.value.trim();if(q)runQuery(q);};
+  input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const q=input.value.trim();if(q)runQuery(q);}};
+})();
+</script>
+{% endif %}
+<script>
+(function(){
+  const toggle=document.getElementById('menu-toggle');
+  const backdrop=document.getElementById('sidebar-backdrop');
+  const sidebar=document.getElementById('app-sidebar');
+  if(!toggle||!sidebar) return;
+  function setOpen(open){
+    document.body.classList.toggle('nav-open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if(backdrop) backdrop.setAttribute('aria-hidden', open ? 'false' : 'true');
+  }
+  toggle.addEventListener('click', ()=> setOpen(!document.body.classList.contains('nav-open')));
+  if(backdrop) backdrop.addEventListener('click', ()=> setOpen(false));
+  sidebar.querySelectorAll('a').forEach(a=>{
+    a.addEventListener('click', ()=>{
+      if(window.matchMedia('(max-width:900px)').matches) setOpen(false);
+    });
+  });
+  window.addEventListener('keydown', e=>{ if(e.key==='Escape') setOpen(false); });
+})();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

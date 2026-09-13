@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ t('print_barcodes') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('print_barcodes') }}{% endblock %}
+{% block head %}
+<style>
+.bc-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.bc-sheet{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.bc-label{
+  border:1px dashed #cbd5e1;border-radius:6px;padding:8px 10px;background:#fff;
+  text-align:center;break-inside:avoid;page-break-inside:avoid;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:110px
+}
+.bc-name{font-size:12px;font-weight:700;line-height:1.25;max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.bc-price{font-size:15px;font-weight:800;color:var(--primary);margin:4px 0 2px}
+.bc-sku{font-size:10px;letter-spacing:.04em;color:#64748b;margin-top:2px}
+.bc-label svg{max-width:100%;height:42px}
+@media print{
+  .no-print,.sidebar,.topbar,.footer,.app-bg,.app-bg-glass{display:none!important}
+  .main{margin:0!important;width:100%!important;max-width:100%!important}
+  .content{padding:4mm!important}
+  .bc-sheet{grid-template-columns:repeat(3,1fr);gap:3mm}
+  .bc-label{border:1px solid #94a3b8;border-radius:2px;padding:3mm;min-height:28mm}
+  @page{margin:6mm;size:A4}
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="bc-toolbar no-print">
+  <a href="/products" class="btn btn-outline">← {{ t('products') }}</a>
+  <button type="button" class="btn btn-primary" onclick="window.print()">{{ t('print') }}</button>
+  <span style="font-size:12px;color:var(--text-secondary)">{{ products|length }} {{ t('labels') }} · {{ t('barcode_print_hint') }}</span>
+</div>
+
+{% if not products %}
+<div class="alert alert-err">{{ t('no_results') }}</div>
+{% else %}
+<div class="bc-sheet" id="bc-sheet">
+  {% for p in products %}
+  <div class="bc-label" data-code="{{ p.sku }}">
+    <div class="bc-name">{{ d(p.name) }}</div>
+    <div class="bc-price">₹{{ (p.price or 0)|money }}</div>
+    <svg class="bc-svg"></svg>
+    <div class="bc-sku">{{ p.sku }}</div>
+  </div>
+  {% endfor %}
+</div>
+<script>
+(function(){
+  document.querySelectorAll('.bc-label').forEach(function(el){
+    const code = (el.getAttribute('data-code')||'').trim();
+    const svg = el.querySelector('.bc-svg');
+    if(!code||!svg||typeof JsBarcode==='undefined') return;
+    try{
+      JsBarcode(svg, code, {
+        format: 'CODE128',
+        width: 1.4,
+        height: 42,
+        displayValue: false,
+        margin: 0,
+        background: '#ffffff'
+      });
+    }catch(e){
+      svg.outerHTML = '<div style="font-size:11px;color:#b91c1c">Invalid code</div>';
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

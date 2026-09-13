@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ t('batches') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('batches') }}{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('sku') }}</th><th>{{ t('name') }}</th><th>{{ t('batch_no') }}</th><th>{{ t('expiry') }}</th><th>{{ t('warehouse') }}</th><th class="num">{{ t('quantity') }}</th></tr></thead>
+<tbody>
+{% for b in batches %}
+<tr><td>{{ b.sku }}</td><td>{{ d(b.product_name) }}</td><td>{{ b.batch_no }}</td><td>{{ b.expiry or '—' }}</td><td>{{ b.warehouse_name or '—' }}</td><td class="num">{{ b.qty }}</td></tr>
+{% else %}
+<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

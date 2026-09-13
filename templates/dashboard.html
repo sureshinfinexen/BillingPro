@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ t('dashboard') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('welcome') }}, {{ user.name }}{% endblock %}
+{% block content %}
+<div class="stats">
+  <div class="stat"><div class="lbl">{{ t('today_sales') }}</div><div class="val">₹{{ sales.s|money }}</div></div>
+  <div class="stat"><div class="lbl">{{ t('today_bills') }}</div><div class="val">{{ sales.c }}</div></div>
+  <div class="stat"><div class="lbl">{{ t('products_count') }}</div><div class="val">{{ prods.c }}</div></div>
+</div>
+<div style="margin-bottom:14px" class="no-print">
+  <a href="/billing" class="btn btn-primary">🧾 {{ t('new_bill') }}</a>
+  <a href="/products" class="btn btn-outline">📦 {{ t('products') }}</a>
+</div>
+<div class="card">
+  <div class="card-header"><h2>{{ t('recent_bills') }}</h2><a href="/bills" class="btn btn-sm btn-outline">{{ t('view') }} →</a></div>
+  <div class="card-body" style="padding:0">
+    <table>
+      <thead><tr><th>{{ t('bill_no') }}</th><th>{{ t('date') }}</th><th>{{ t('counter') }}</th><th>{{ t('employee') }}</th><th>{{ t('total') }}</th></tr></thead>
+      <tbody>
+      {% for b in recent %}
+      <tr>
+        <td><a href="/bills/{{ b.id }}" style="color:var(--primary);font-weight:600">{{ b.bill_no }}</a></td>
+        <td>{{ b.bill_date }}</td>
+        <td>{{ b.counter_name and d(b.counter_name) or '—' }}</td>
+        <td>{{ b.staff_name and d(b.staff_name) or '—' }}</td>
+        <td>₹{{ b.total|money }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

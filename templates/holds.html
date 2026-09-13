@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ t('holds') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('holds') }}{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body" style="padding:0">
+<table>
+<thead><tr><th>{{ t('hold_no') }}</th><th>{{ t('date') }}</th><th>{{ t('customer') }}</th><th>{{ t('counter') }}</th><th>{{ t('employee') }}</th><th class="act">{{ t('actions') }}</th></tr></thead>
+<tbody>
+{% for h in holds %}
+<tr>
+  <td>{{ h.hold_no }}</td>
+  <td>{{ h.created_at }}</td>
+  <td>{{ h.customer_name or '—' }}{% if h.customer_mobile %}<div style="font-size:11px;color:var(--text-secondary)">{{ h.customer_mobile }}</div>{% endif %}</td>
+  <td>{{ d(h.counter_name) if h.counter_name else '—' }}</td>
+  <td>{{ d(h.staff_name) if h.staff_name else '—' }}</td>
+  <td class="act">
+    <a class="btn btn-sm btn-primary" href="/billing?hold={{ h.id }}">{{ t('recall') }}</a>
+    <form method="post" action="/api/holds/{{ h.id }}/delete" style="display:inline" onsubmit="return confirm({{ t('confirm_delete')|tojson }})">
+      <button class="btn btn-sm btn-danger" type="submit">{{ t('delete') }}</button>
+    </form>
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+{% endfor %}
+</tbody></table>
+</div></div>
+{% endblock %}

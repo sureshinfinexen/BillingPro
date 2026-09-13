@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ t('reorder') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('reorder') }} / {{ t('low_stock') }}{% endblock %}
+{% block content %}
+<div class="card"><div class="card-header"><h2>{{ t('reorder_list') }}</h2></div>
+<div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('sku') }}</th><th>{{ t('name') }}</th><th class="num">{{ t('stock') }}</th><th class="num">{{ t('reorder_level') }}</th><th>{{ t('unit') }}</th></tr></thead>
+<tbody>
+{% for p in products %}
+<tr><td>{{ p.sku }}</td><td>{{ d(p.name) }}</td><td class="num"><strong style="color:var(--danger)">{{ p.stock }}</strong></td><td class="num">{{ p.reorder_level }}</td><td>{{ d(p.unit or 'pcs') }}</td></tr>
+{% else %}
+<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+{% endfor %}
+</tbody></table></div></div>
+<div class="card"><div class="card-header"><h2>{{ t('expiring_batches') }}</h2></div>
+<div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('sku') }}</th><th>{{ t('name') }}</th><th>{{ t('batch_no') }}</th><th>{{ t('expiry') }}</th><th class="num">{{ t('quantity') }}</th></tr></thead>
+<tbody>
+{% for b in expiring %}
+<tr><td>{{ b.sku }}</td><td>{{ d(b.product_name) }}</td><td>{{ b.batch_no }}</td><td>{{ b.expiry }}</td><td class="num">{{ b.qty }}</td></tr>
+{% else %}
+<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

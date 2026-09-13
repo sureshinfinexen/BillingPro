@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ t('offline') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('offline') }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:560px">
+  <div class="card-body">
+    <p style="margin-bottom:12px">{{ t('offline_hint') }}</p>
+    <button class="btn btn-primary" type="button" id="btn-enable">{{ t('enable_offline') }}</button>
+    <button class="btn btn-outline" type="button" id="btn-sync" style="margin-left:8px">{{ t('sync_offline') }}</button>
+    <div id="off-status" style="margin-top:14px;font-size:13px;color:var(--text-secondary)"></div>
+    <div id="off-queue" style="margin-top:12px;font-size:13px"></div>
+  </div>
+</div>
+<script src="/static/offline.js"></script>
+<script>
+document.getElementById('btn-enable').onclick=()=>{
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('/static/sw.js').then(()=>{
+      document.getElementById('off-status').textContent='OK';
+    }).catch(e=>{ document.getElementById('off-status').textContent=e.message; });
+  }
+};
+document.getElementById('btn-sync').onclick=async()=>{
+  const n = await OfflineQueue.sync();
+  document.getElementById('off-status').textContent = 'Synced: '+n;
+  renderQ();
+};
+function renderQ(){
+  const q = OfflineQueue.list();
+  document.getElementById('off-queue').innerHTML = q.length ? ('Queue: '+q.length) : '';
+}
+renderQ();
+</script>
+{% endblock %}

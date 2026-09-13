@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ t('assign_pages') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('assign_pages') }}{% endblock %}
+{% block content %}
+{% if saved %}<div class="alert alert-ok">{{ t('saved_ok') }}</div>{% endif %}
+<p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">{{ t('assign_pages_help') }}</p>
+{% for s in staff %}
+<div class="card" style="margin-bottom:12px">
+  <div class="card-header">
+    <h2>{{ d(s.name) }} ({{ s.username }}) —
+      {% if s.role=='admin' %}{{ t('admin') }}{% else %}{{ t('cashier') }}{% endif %}
+    </h2>
+  </div>
+  <div class="card-body">
+    <form method="post" action="/permissions/{{ s.id }}">
+      <div style="display:flex;flex-wrap:wrap;gap:10px 16px;margin-bottom:12px">
+        {% for p in s.assignable %}
+        <label style="font-size:13px;display:flex;gap:6px;align-items:center;min-width:180px">
+          <input type="checkbox" name="page" value="{{ p.key }}"
+            {% if p.key in s.selected_pages %}checked{% endif %}>
+          {{ p.label }}
+        </label>
+        {% endfor %}
+      </div>
+      {% if not s.assignable %}
+      <p style="font-size:13px;color:var(--text-secondary)">{{ t('no_pages_for_shop') }}</p>
+      {% else %}
+      <button class="btn btn-primary btn-sm" type="submit">{{ t('save') }}</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="card"><div class="card-body">{{ t('no_staff') }}</div></div>
+{% endfor %}
+{% endblock %}

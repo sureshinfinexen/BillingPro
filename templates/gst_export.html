@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ t('gst_export') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('gst_export') }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:720px">
+  <div class="card-body">
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">{{ t('gst_export_hint') }}</p>
+    <form method="get" action="/gst-export/csv">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('from_date') }}</label>
+          <input class="form-control" type="date" name="from_date"></div>
+        <div class="form-group"><label class="form-label">{{ t('to_date') }}</label>
+          <input class="form-control" type="date" name="to_date"></div>
+      </div>
+      <button class="btn btn-primary" type="submit">{{ t('download_csv') }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="max-width:720px">
+  <div class="card-header"><h2>{{ t('gst_formula_title') }}</h2></div>
+  <div class="card-body" style="font-size:13px;line-height:1.55">
+    <p style="margin-bottom:10px;color:var(--text-secondary)">{{ t('gst_formula_intro') }}</p>
+    <ol style="margin:0 0 12px 18px;padding:0">
+      <li style="margin-bottom:6px"><strong>{{ t('rate') }}</strong> = {{ t('mrp') }} − {{ t('discount') }}</li>
+      <li style="margin-bottom:6px"><strong>{{ t('gst_taxable_base') }}</strong> = {{ t('rate') }} × {{ t('quantity') }}</li>
+      <li style="margin-bottom:6px"><strong>{{ t('gst') }}</strong> = {{ t('gst_taxable_base') }} × (GST% ÷ 100)</li>
+      <li style="margin-bottom:6px"><strong>{{ t('cgst') }}</strong> = {{ t('gst') }} ÷ 2</li>
+      <li style="margin-bottom:6px"><strong>{{ t('sgst') }}</strong> = {{ t('gst') }} − {{ t('cgst') }} <span style="color:var(--text-secondary)">({{ t('gst_split_note') }})</span></li>
+      <li style="margin-bottom:6px"><strong>{{ t('line_total') }}</strong> = {{ t('gst_taxable_base') }} + {{ t('gst') }}</li>
+    </ol>
+    <div style="background:color-mix(in srgb,var(--primary-light) 40%,transparent);border-radius:8px;padding:10px 12px;font-size:12px">
+      <div style="font-weight:700;margin-bottom:4px">{{ t('gst_example_title') }}</div>
+      <div>{{ t('gst_example_body') }}</div>
+    </div>
+    <p style="margin-top:12px;font-size:12px;color:var(--text-secondary)">{{ t('gst_igst_note') }}{% if default_gst is defined %} · {{ t('default_gst_pct') }}: <strong>{{ default_gst }}%</strong>{% endif %}</p>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ t('loyalty') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('loyalty') }}{% endblock %}
+{% block content %}
+<form method="get" class="search-bar"><input class="form-control" name="q" value="{{ q }}" placeholder="{{ t('customer_mobile') }} / {{ t('name') }}" style="max-width:280px"><button class="btn btn-primary">{{ t('search') }}</button></form>
+<div class="reports-grid">
+<div class="card"><div class="card-header"><h2>{{ t('customers') }}</h2></div>
+<div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('name') }}</th><th>{{ t('customer_mobile') }}</th><th class="num">{{ t('points') }}</th></tr></thead>
+<tbody>
+{% for c in customers %}
+<tr><td>{{ c.name or '—' }}</td><td>{{ c.mobile }}</td><td class="num">{{ c.loyalty_points or 0 }}</td></tr>
+{% else %}
+<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+{% endfor %}
+</tbody></table></div></div>
+<div class="card"><div class="card-header"><h2>{{ t('loyalty_ledger') }}</h2></div>
+<div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('customer') }}</th><th class="num">{{ t('points') }}</th><th>{{ t('notes') }}</th></tr></thead>
+<tbody>
+{% for l in ledger %}
+<tr><td>{{ l.name }} ({{ l.mobile }})<td class="num">{{ l.points }}</td><td>{{ l.note }}</td></tr>
+{% endfor %}
+</tbody></table></div></div>
+</div>
+{% endblock %}

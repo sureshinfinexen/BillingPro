@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ t('login') }} · {{ APP_NAME }}{% endblock %}
+{% block body_auth %}
+<div class="login-shell" style="min-height:100vh;width:100%;display:flex;align-items:center;justify-content:center;padding:16px;{% if not APP_BG_URL %}background:linear-gradient(160deg,var(--sidebar-bg),var(--primary)){% endif %}">
+  <div class="card" style="width:100%;max-width:360px;margin:0;padding:20px;border-radius:12px;{% if APP_BG_URL %}box-shadow:0 16px 40px rgba(0,0,0,.35){% else %}box-shadow:0 16px 40px rgba(0,0,0,.25){% endif %}">
+    <div style="text-align:center;margin-bottom:14px">
+      {% if APP_LOGO_URL %}
+      <img src="{{ APP_LOGO_URL }}" alt="" style="height:48px;max-width:140px;object-fit:contain;margin-bottom:8px">
+      {% endif %}
+      <div style="font-size:22px;font-weight:800;color:var(--primary)">{{ APP_NAME }}</div>
+      <div style="font-size:12px;color:var(--text-secondary)">{{ APP_TAGLINE }}</div>
+    </div>
+    {% if error %}<div class="alert alert-err">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <div class="form-group"><label class="form-label">{{ t('username') }}</label>
+        <input class="form-control" name="username" required autofocus value="admin"></div>
+      <div class="form-group"><label class="form-label">{{ t('password') }}</label>
+        <input class="form-control" type="password" name="password" required value="admin123"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" type="submit">{{ t('login') }}</button>
+    </form>
+    <div style="margin-top:14px;text-align:center">
+      <form class="lang-switch" method="post" style="justify-content:center">
+        {% for code,label in langs.items() %}
+        <button formaction="/lang/{{ code }}" class="{{ 'on' if lang==code }}">{{ label }}</button>
+        {% endfor %}
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

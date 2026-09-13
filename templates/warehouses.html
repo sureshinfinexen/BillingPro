@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ t('warehouses') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('warehouses') }}{% endblock %}
+{% block content %}
+{% if request.query_params.get('saved') %}<div class="alert alert-ok">{{ t('saved_ok') }}</div>{% endif %}
+<div class="card" style="max-width:520px;margin-bottom:16px">
+  <div class="card-header"><h2>{{ t('add_warehouse') }}</h2></div>
+  <div class="card-body">
+    <form method="post" action="/warehouses">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('name') }} *</label><input class="form-control" name="name" required></div>
+        <div class="form-group"><label class="form-label">{{ t('code') }} *</label><input class="form-control" name="code" required></div>
+      </div>
+      <div class="form-group"><label class="form-label">{{ t('shop') }}</label>
+        <select class="form-control" name="shop_id">{% for s in shops %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select>
+      </div>
+      <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+    </form>
+  </div>
+</div>
+<div class="card" style="max-width:640px;margin-bottom:16px">
+  <div class="card-header"><h2>{{ t('stock_transfer') }}</h2></div>
+  <div class="card-body">
+    <form method="post" action="/warehouses/transfer">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('from') }}</label>
+          <select class="form-control" name="from_warehouse_id">{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label class="form-label">{{ t('to') }}</label>
+          <select class="form-control" name="to_warehouse_id">{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">{{ t('products') }}</label>
+          <select class="form-control" name="product_id">{% for p in products %}<option value="{{ p.id }}">{{ p.sku }} — {{ d(p.name) }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label class="form-label">{{ t('quantity') }}</label>
+          <input class="form-control" type="number" step="0.01" min="0.01" name="qty" required></div>
+      </div>
+      <button class="btn btn-primary" type="submit">{{ t('transfer') }}</button>
+    </form>
+  </div>
+</div>
+<div class="card"><div class="card-body" style="padding:0">
+<table><thead><tr><th>{{ t('name') }}</th><th>{{ t('code') }}</th><th>{{ t('shop') }}</th><th class="num">{{ t('stock') }}</th></tr></thead>
+<tbody>
+{% for w in warehouses %}
+<tr><td>{{ w.name }}</td><td>{{ w.code }}</td><td>{{ w.shop_name or '—' }}</td><td class="num">{{ w.total_qty }}</td></tr>
+{% endfor %}
+</tbody></table>
+</div></div>
+{% endblock %}

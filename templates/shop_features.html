@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ t('manage_features') }} · {{ shop.name }}{% endblock %}
+{% block page_title %}{{ t('manage_features') }} — {{ shop.name }}{% endblock %}
+{% block content %}
+{% if saved == '1' %}<div class="alert alert-ok">{{ t('saved_ok') }}</div>{% endif %}
+{% if saved == 'admin_created' %}<div class="alert alert-ok">{{ t('store_admin_created') }}</div>{% endif %}
+{% if saved == 'username_exists' %}<div class="alert alert-err">{{ t('username_exists') }}</div>{% endif %}
+
+<p style="margin-bottom:14px"><a href="/shops" class="btn btn-outline btn-sm">← {{ t('shops') }}</a></p>
+
+<div class="card" style="max-width:720px;margin-bottom:16px">
+  <div class="card-header"><h2>{{ t('feature_pack') }} ({{ shop.code }})</h2></div>
+  <div class="card-body">
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">{{ t('feature_pack_help') }}</p>
+    <form method="post" action="/shops/{{ shop.id }}/features">
+      <div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:14px">
+        {% for f in feature_catalog %}
+        <label style="font-size:13px;display:flex;gap:6px;align-items:center;min-width:220px">
+          <input type="checkbox" name="feature" value="{{ f.key }}"
+            {% if f.key in enabled or f.core %}checked{% endif %}
+            {% if f.core %}disabled{% endif %}>
+          {{ f.label }}{% if f.core %} *{% endif %}
+        </label>
+        {% endfor %}
+      </div>
+      {% for f in feature_catalog if f.core %}
+      <input type="hidden" name="feature" value="{{ f.key }}">
+      {% endfor %}
+      <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="max-width:520px;margin-bottom:16px">
+  <div class="card-header"><h2>{{ t('create_store_admin') }}</h2></div>
+  <div class="card-body">
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">{{ t('create_store_admin_help') }}</p>
+    <form method="post" action="/shops/{{ shop.id }}/admin">
+      <div class="form-group"><label class="form-label">{{ t('name') }} *</label><input class="form-control" name="name" required></div>
+      <div class="form-group"><label class="form-label">{{ t('username') }} *</label><input class="form-control" name="username" required></div>
+      <div class="form-group"><label class="form-label">{{ t('password') }}</label><input class="form-control" name="password" value="admin123"></div>
+      <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+    </form>
+  </div>
+</div>
+
+{% if store_admins %}
+<div class="card" style="max-width:520px">
+  <div class="card-header"><h2>{{ t('store_admins') }}</h2></div>
+  <div class="card-body" style="padding:0">
+    <table>
+      <thead><tr><th>{{ t('name') }}</th><th>{{ t('username') }}</th></tr></thead>
+      <tbody>
+      {% for a in store_admins %}
+      <tr><td>{{ a.name }}</td><td>{{ a.username }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

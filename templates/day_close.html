@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ t('day_close') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('day_close') }} — {{ today }}{% endblock %}
+{% block content %}
+{% if saved %}<div class="alert alert-ok">{{ t('saved_ok') }}</div>{% endif %}
+<div class="stats">
+  <div class="stat"><div class="lbl">{{ t('today_bills') }}</div><div class="val">{{ summary.bills }}</div></div>
+  <div class="stat"><div class="lbl">{{ t('pay_cash') }}</div><div class="val">₹{{ summary.cash|money }}</div></div>
+  <div class="stat"><div class="lbl">{{ t('pay_upi') }}</div><div class="val">₹{{ summary.upi|money }}</div></div>
+  <div class="stat"><div class="lbl">{{ t('pay_card') }}</div><div class="val">₹{{ summary.card|money }}</div></div>
+  <div class="stat"><div class="lbl">{{ t('credit_sales') }}</div><div class="val">₹{{ summary.credit|money }}</div></div>
+</div>
+<div class="card" style="max-width:420px;margin-bottom:16px">
+  <div class="card-header"><h2>{{ t('close_drawer') }}</h2></div>
+  <div class="card-body">
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">{{ t('expected_cash') }}: <strong>₹{{ summary.cash|money }}</strong></p>
+    <form method="post" action="/day-close">
+      <div class="form-group"><label class="form-label">{{ t('actual_cash') }} *</label>
+        <input class="form-control" type="number" step="0.01" min="0" name="actual_cash" required value="{{ summary.cash }}"></div>
+      <div class="form-group"><label class="form-label">{{ t('notes') }}</label>
+        <input class="form-control" name="notes"></div>
+      <button class="btn btn-primary" type="submit">{{ t('day_close') }}</button>
+    </form>
+  </div>
+</div>
+<div class="card"><div class="card-header"><h2>{{ t('close_history') }}</h2></div>
+<div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('date') }}</th><th>{{ t('counter') }}</th><th>{{ t('employee') }}</th><th class="num">{{ t('expected_cash') }}</th><th class="num">{{ t('actual_cash') }}</th><th class="num">{{ t('today_bills') }}</th></tr></thead>
+<tbody>
+{% for h in history %}
+<tr><td>{{ h.close_date }}</td><td>{{ d(h.counter_name) if h.counter_name else '—' }}</td><td>{{ d(h.staff_name) if h.staff_name else '—' }}</td><td class="num">₹{{ h.expected_cash|money }}</td><td class="num">₹{{ h.actual_cash|money }}</td><td class="num">{{ h.bills_count }}</td></tr>
+{% else %}
+<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

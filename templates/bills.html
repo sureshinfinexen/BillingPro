@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ t('bills') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('bills') }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:14px" class="no-print">
+  <a href="/billing" class="btn btn-primary">+ {{ t('new_bill') }}</a>
+</div>
+<div class="card">
+  <div class="card-body" style="padding:0">
+    <table>
+      <colgroup>
+        <col style="width:16%"><col style="width:11%"><col style="width:12%"><col style="width:14%">
+        <col style="width:16%"><col style="width:12%"><col style="width:10%"><col style="width:9%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>{{ t('bill_no') }}</th>
+          <th>{{ t('date') }}</th>
+          <th>{{ t('counter') }}</th>
+          <th>{{ t('employee') }}</th>
+          <th>{{ t('customer') }}</th>
+          <th>{{ t('payment') }}</th>
+          <th class="num">{{ t('total') }}</th>
+          <th class="act">{{ t('actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for b in bills %}
+      <tr>
+        <td><a href="/bills/{{ b.id }}" style="color:var(--primary);font-weight:600">{{ b.bill_no }}</a></td>
+        <td>{{ b.bill_date }}</td>
+        <td>{{ d(b.counter_name) if b.counter_name else '—' }}</td>
+        <td>{{ d(b.staff_name) if b.staff_name else '—' }}</td>
+        <td>{{ b.customer_name or '—' }}{% if b.customer_mobile %}<div style="font-size:11px;color:var(--text-secondary)">{{ b.customer_mobile }}</div>{% endif %}</td>
+        <td>{% if b.payment_mode=='cash' %}{{ t('pay_cash') }}{% elif b.payment_mode=='upi' %}{{ t('pay_upi') }}{% elif b.payment_mode=='card' %}{{ t('pay_card') }}{% if b.card_last4 %} ····{{ b.card_last4 }}{% endif %}{% else %}{{ b.payment_mode }}{% endif %}</td>
+        <td class="num">₹{{ b.total|money }}</td>
+        <td class="act">
+          <a href="/bills/{{ b.id }}" class="btn btn-sm btn-outline">{{ t('view') }}</a>
+          <a href="/bills/{{ b.id }}/edit" class="btn btn-sm btn-outline">{{ t('edit') }}</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

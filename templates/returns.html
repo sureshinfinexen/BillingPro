@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ t('returns') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('returns') }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:720px">
+  <div class="card-body">
+    <form method="get" action="/returns" class="search-bar">
+      <input class="form-control" name="bill_no" value="{{ bill_no }}" placeholder="{{ t('bill_no') }}" style="max-width:240px">
+      <button class="btn btn-primary" type="submit">{{ t('search') }}</button>
+    </form>
+    {% if bill %}
+    <p style="margin:12px 0"><strong>{{ bill.bill_no }}</strong> · ₹{{ bill.total|money }} · {{ bill.customer_name or '—' }}</p>
+    <table>
+      <thead><tr><th>{{ t('name') }}</th><th>{{ t('quantity') }}</th><th>{{ t('return_qty') }}</th></tr></thead>
+      <tbody>
+      {% for it in items %}
+      <tr>
+        <td>{{ d(it.name) }}<div style="font-size:11px;color:var(--text-secondary)">{{ it.sku }}</div></td>
+        <td>{{ it.qty }}</td>
+        <td><input class="form-control ret-qty" data-id="{{ it.id }}" data-max="{{ it.qty }}" data-name="{{ it.name }}" type="number" min="0" max="{{ it.qty }}" step="0.01" value="0" style="width:100px"></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">{{ t('reason') }}</label>
+      <input id="reason" class="form-control"></div>
+    <div id="ret-err" class="alert alert-err" style="display:none"></div>
+    <button id="btn-return" class="btn btn-primary" type="button">{{ t('process_return') }}</button>
+    <script>
+    document.getElementById('btn-return').onclick=async()=>{
+      const err=document.getElementById('ret-err'); err.style.display='none';
+      const items=[...document.querySelectorAll('.ret-qty')].map(el=>({bill_item_id:+el.dataset.id,qty:+el.value||0,name:el.dataset.name})).filter(x=>x.qty>0);
+      if(!items.length){err.textContent='{{ t("no_results") }}';err.style.display='block';return;}
+      const r=await fetch('/api/returns',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({bill_id:{{ bill.id }},items,reason:document.getElementById('reason').value})});
+      const d=await r.json();
+      if(!d.ok){err.textContent=d.error||'Error';err.style.display='block';return;}
+      alert(d.return_no+' · ₹'+d.total); location='/returns';
+    };
+    </script>
+    {% endif %}
+  </div>
+</div>
+<div class="card" style="margin-top:16px"><div class="card-header"><h2>{{ t('recent_returns') }}</h2></div>
+<div class="card-body" style="padding:0"><table>
+<thead><tr><th>{{ t('return_no') }}</th><th>{{ t('bill_no') }}</th><th>{{ t('date') }}</th><th class="num">{{ t('total') }}</th></tr></thead>
+<tbody>
+{% for r in recent %}
+<tr><td>{{ r.return_no }}</td><td>{{ r.bill_no or '—' }}</td><td>{{ r.return_date }}</td><td class="num">₹{{ r.total|money }}</td></tr>
+{% else %}
+<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

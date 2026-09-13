@@ -1,0 +1,430 @@
+{% extends "base.html" %}
+{% block title %}{{ t('edit_bill') }} · {{ bill.bill_no }}{% endblock %}
+{% block page_title %}{{ t('edit_bill') }}: {{ bill.bill_no }}{% endblock %}
+{% block head %}
+<style>
+.pos-simple{width:100%;max-width:none}
+.suggest{margin-top:4px;border:1px solid var(--border);border-radius:6px;max-height:180px;overflow:auto;display:none}
+.suggest.open{display:block}
+.suggest button{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-bottom:1px solid var(--border-soft);background:transparent;cursor:pointer;font:inherit;color:var(--text-primary)}
+.suggest button:hover,.suggest button.active{background:var(--hover-row)}
+.suggest .meta{font-size:11px;color:var(--text-secondary);display:block;margin-top:1px}
+.line-entry{display:grid;grid-template-columns:1.4fr 80px 80px 80px 80px 90px 78px;gap:6px;align-items:end;margin-top:8px}
+@media(max-width:900px){.line-entry{grid-template-columns:1fr 1fr}}
+.ro{background:#f3f4f6!important}
+.totals .row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px}
+.totals .grand{font-size:18px;font-weight:800;color:var(--primary);border-top:1px solid var(--border);padding-top:6px;margin-top:4px}
+.saving{color:#15803d;font-weight:600}
+.qty-inp{width:70px;padding:5px 6px;border:1px solid var(--border);border-radius:5px;background:var(--input-bg)}
+#search-status{font-size:11px;color:var(--text-secondary);min-height:14px;margin-top:2px}
+.stock-ok{color:var(--success)}.stock-low{color:#b45309}.stock-out{color:var(--danger)}
+</style>
+{% endblock %}
+{% block content %}
+<div class="pos-simple">
+  <div class="card">
+    <div class="card-body">
+      <div class="form-row-3">
+        <div class="form-group mb-0">
+          <label class="form-label">{{ t('customer_mobile_required') }}</label>
+          <input id="customer_mobile" class="form-control" value="{{ bill.customer_mobile or '' }}"
+                 inputmode="numeric" maxlength="10" required autocomplete="tel">
+          <div id="cust-status" class="cust-status"></div>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">{{ t('customer') }}</label>
+          <input id="customer_name" class="form-control" value="{{ bill.customer_name or '' }}">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">{{ t('bill_no') }}</label>
+          <input class="form-control" value="{{ bill.bill_no }}" disabled style="font-weight:700">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <div class="form-group mb-0">
+          <label class="form-label">{{ t('payment') }}</label>
+          <select id="payment_mode" class="form-control">
+            <option value="cash" {% if bill.payment_mode=='cash' %}selected{% endif %}>{{ t('pay_cash') }}</option>
+            <option value="upi" {% if bill.payment_mode=='upi' %}selected{% endif %}>{{ t('pay_upi') }}</option>
+            <option value="card" {% if bill.payment_mode=='card' %}selected{% endif %}>{{ t('pay_card') }}</option>
+          </select>
+        </div>
+        <div id="card-last4-wrap" class="form-group mb-0" style="max-width:180px;{% if bill.payment_mode!='card' %}display:none{% endif %}">
+          <label class="form-label">{{ t('card_last4') }} *</label>
+          <input id="card_last4" class="form-control" inputmode="numeric" maxlength="4" pattern="[0-9]{4}"
+                 value="{{ bill.card_last4 or '' }}" placeholder="{{ t('card_last4_hint') }}" autocomplete="off">
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--text-secondary);margin-top:6px">{{ t('edit_bill_hint') }}</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>{{ t('add') }} {{ t('products') }}</h2></div>
+    <div class="card-body">
+      <label class="form-label">{{ t('search_by_code_name') }}</label>
+      <input id="q" class="form-control" placeholder="{{ t('search_hint') }}" autocomplete="off" autofocus>
+      <div id="search-status"></div>
+      <div id="suggest" class="suggest"></div>
+
+      <div class="line-entry">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('name') }}</label>
+          <input id="sel-name" class="form-control ro" readonly tabindex="-1" placeholder="—">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('mrp') }}</label>
+          <input id="sel-mrp" class="form-control ro" readonly tabindex="-1">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('discount') }}</label>
+          <input id="sel-disc" class="form-control ro" readonly tabindex="-1">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('rate') }}</label>
+          <input id="sel-rate" class="form-control ro" readonly tabindex="-1">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('quantity') }}</label>
+          <input id="sel-qty" class="form-control" type="number" step="0.01" min="0.01" value="1">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">{{ t('gst_total') }}</label>
+          <input id="sel-line" class="form-control ro" readonly tabindex="-1">
+        </div>
+        <button type="button" id="btn-add" class="btn btn-primary">{{ t('add') }}</button>
+      </div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-top:8px">
+        {{ t('stock') }}: <strong id="sel-stock">—</strong>
+        · {{ t('gst') }} <strong id="sel-gst">0%</strong>
+        · {{ t('customer_saving') }}: <strong class="saving" id="sel-save">₹0.00</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body" style="padding:0">
+      <table>
+        <thead>
+          <tr>
+            <th>{{ t('name') }}</th>
+            <th>{{ t('quantity') }}</th>
+            <th>{{ t('mrp') }}</th>
+            <th>{{ t('discount') }}</th>
+            <th>{{ t('rate') }}</th>
+            <th>{{ t('gst') }}</th>
+            <th>{{ t('line_total') }}</th>
+            <th>{{ t('customer_saving') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cart-body">
+          <tr id="empty-row"><td colspan="9" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('empty_cart') }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body" style="display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:end">
+      <div id="bill-err" class="alert alert-err" style="display:none;flex:1"></div>
+      <div class="totals" style="min-width:260px;margin-left:auto">
+        <div class="row"><span>{{ t('subtotal') }} ({{ t('rate') }})</span><span id="subtotal">₹0.00</span></div>
+        <div class="row"><span>{{ t('discount') }} / {{ t('customer_saving') }}</span><span class="saving" id="disc-show">₹0.00</span></div>
+        <div class="row"><span>{{ t('cgst') }}</span><span id="cgst-show">₹0.00</span></div>
+        <div class="row"><span>{{ t('sgst') }}</span><span id="sgst-show">₹0.00</span></div>
+        <div class="row"><span>{{ t('gst') }} {{ t('total') }}</span><span id="tax-show">₹0.00</span></div>
+        <div class="row grand"><span>{{ t('total') }}</span><span id="grand">₹0.00</span></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <a href="/bills/{{ bill.id }}" class="btn btn-outline">{{ t('cancel') }}</a>
+        <button id="btn-save" class="btn btn-primary" style="min-width:160px;justify-content:center" type="button">{{ t('save_bill') }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const BILL_ID = {{ bill.id }};
+  const MSG = {
+    remove: {{ t('remove')|tojson|safe }},
+    emptyCart: {{ t('empty_cart')|tojson|safe }},
+    noResults: {{ t('no_results')|tojson|safe }},
+    insufficientStock: {{ t('insufficient_stock')|tojson|safe }},
+    cardLast4Required: {{ t('err_card_last4')|tojson|safe }},
+    mobileRequired: {{ t('err_mobile_required')|tojson|safe }},
+    mobileInvalid: {{ t('err_mobile_invalid')|tojson|safe }},
+    customerFound: {{ t('customer_found')|tojson|safe }},
+    customerNew: {{ t('customer_new')|tojson|safe }},
+    searchNavHint: {{ t('search_nav_hint')|tojson|safe }},
+    stock: {{ t('stock')|tojson|safe }},
+    mrp: {{ t('mrp')|tojson|safe }},
+    rate: {{ t('rate')|tojson|safe }},
+    gst: {{ t('gst')|tojson|safe }},
+    cgst: {{ t('cgst')|tojson|safe }},
+    sgst: {{ t('sgst')|tojson|safe }},
+    genericError: {{ t('generic_error')|tojson|safe }}
+  };
+  const cart = {{ cart_json }};
+  let selected = null, timer=null, seq=0, activeIdx=-1;
+
+  const q = document.getElementById('q');
+  const suggest = document.getElementById('suggest');
+  const statusEl = document.getElementById('search-status');
+  const cartBody = document.getElementById('cart-body');
+  const qtyEl = document.getElementById('sel-qty');
+
+  function money(n){ return Math.round((Number(n)||0)*100)/100; }
+  const origQty = {};
+  cart.forEach(it=>{
+    if(it.product_id) origQty[it.product_id] = money((origQty[it.product_id]||0) + (it.qty||0));
+  });
+  function fmt(n){ return '₹'+money(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function lineCalc(p, qty){
+    const mrp = money(p.mrp), rate = money(p.rate), discUnit = money(p.discount || Math.max(0, mrp-rate));
+    const base = money(rate * qty);
+    const gst = money(base * (p.gst_pct||0) / 100);
+    const cgst = money(gst/2), sgst = money(gst - cgst);
+    const save = money(discUnit * qty);
+    return { base, gst, cgst, sgst, total: money(base+gst), save, discUnit, mrp, rate };
+  }
+
+  function stockClass(n){
+    if(n<=0) return 'stock-out';
+    if(n<=5) return 'stock-low';
+    return 'stock-ok';
+  }
+
+  function refreshSelected(){
+    if(!selected){
+      document.getElementById('sel-name').value='';
+      document.getElementById('sel-mrp').value='';
+      document.getElementById('sel-disc').value='';
+      document.getElementById('sel-rate').value='';
+      document.getElementById('sel-line').value='';
+      document.getElementById('sel-gst').textContent='0%';
+      document.getElementById('sel-save').textContent=fmt(0);
+      document.getElementById('sel-stock').textContent='—';
+      document.getElementById('sel-stock').className='';
+      return;
+    }
+    const qty = Math.max(0.01, Number(qtyEl.value)||1);
+    const c = lineCalc(selected, qty);
+    document.getElementById('sel-name').value = selected.name + ' ('+selected.sku+')';
+    document.getElementById('sel-mrp').value = c.mrp.toFixed(2);
+    document.getElementById('sel-disc').value = c.discUnit.toFixed(2);
+    document.getElementById('sel-rate').value = c.rate.toFixed(2);
+    document.getElementById('sel-line').value = fmt(c.total);
+    document.getElementById('sel-gst').textContent =
+      (selected.gst_pct||0)+'% ('+MSG.cgst+' '+fmt(c.cgst)+' + '+MSG.sgst+' '+fmt(c.sgst)+') = '+fmt(c.gst);
+    document.getElementById('sel-save').textContent = fmt(c.save);
+    const st = document.getElementById('sel-stock');
+    st.textContent = selected.stock != null ? selected.stock : '—';
+    st.className = stockClass(Number(selected.stock)||0);
+  }
+
+  function pickProduct(p){
+    selected = {
+      id:p.id, sku:p.sku, name:p.name, mrp:p.mrp, discount:p.discount,
+      rate:p.rate||p.price, cost:p.cost||0, gst_pct:p.gst_pct||0, stock:p.stock
+    };
+    qtyEl.value = 1;
+    suggest.classList.remove('open');
+    statusEl.textContent = '';
+    q.value = p.sku;
+    refreshSelected();
+    qtyEl.focus();
+    qtyEl.select();
+  }
+
+  function addSelected(){
+    if(!selected) return;
+    const qty = Math.max(0.01, Number(qtyEl.value)||1);
+    const found = cart.find(x=>x.product_id===selected.id);
+    const newQty = found ? money(found.qty + qty) : qty;
+    // Stock on shelf + qty already reserved on this bill (will be restored on save)
+    const available = money(selected.stock||0) + money(origQty[selected.id]||0);
+    if(newQty > available){
+      const err=document.getElementById('bill-err');
+      err.textContent = MSG.insufficientStock + ' (' + selected.name + ': ' + available + ')';
+      err.style.display='block';
+      return;
+    }
+    if(found) found.qty = newQty;
+    else cart.push({
+      product_id:selected.id, sku:selected.sku, name:selected.name,
+      mrp:selected.mrp, discount:selected.discount, rate:selected.rate,
+      unit_price:selected.rate, qty:qty, gst_pct:selected.gst_pct, cost:selected.cost,
+      stock: selected.stock
+    });
+    selected=null; q.value=''; refreshSelected(); renderCart(); q.focus();
+    document.getElementById('bill-err').style.display='none';
+  }
+
+  function renderCart(){
+    const empty = document.getElementById('empty-row');
+    [...cartBody.querySelectorAll('tr:not(#empty-row)')].forEach(r=>r.remove());
+    if(!cart.length){ if(empty) empty.style.display=''; updateTotals(); return; }
+    if(empty) empty.style.display='none';
+    cart.forEach((it, idx)=>{
+      const c = lineCalc(it, it.qty);
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td><strong>'+esc(it.name)+'</strong><div style="font-size:11px;color:var(--text-secondary)">'+esc(it.sku)+'</div></td>'
+        + '<td><input class="qty-inp" data-i="'+idx+'" type="number" min="0.01" step="0.01" value="'+it.qty+'"></td>'
+        + '<td>'+fmt(c.mrp)+'</td><td>'+fmt(c.discUnit)+'</td><td>'+fmt(c.rate)+'</td>'
+        + '<td>'+(it.gst_pct||0)+'%<div style="font-size:11px;color:var(--text-secondary)">'+MSG.cgst+' '+fmt(c.cgst)+' / '+MSG.sgst+' '+fmt(c.sgst)+'</div></td>'
+        + '<td>'+fmt(c.total)+'</td><td class="saving">'+fmt(c.save)+'</td>'
+        + '<td><button type="button" class="btn btn-sm btn-danger" data-rm="'+idx+'">'+esc(MSG.remove)+'</button></td>';
+      cartBody.appendChild(tr);
+    });
+    cartBody.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{ cart.splice(+b.dataset.rm,1); renderCart(); });
+    cartBody.querySelectorAll('.qty-inp').forEach(inp=>inp.onchange=()=>{ cart[+inp.dataset.i].qty=Math.max(0.01,Number(inp.value)||0.01); renderCart(); });
+    updateTotals();
+  }
+
+  function updateTotals(){
+    let sub=0, disc=0, tax=0, cgst=0, sgst=0;
+    cart.forEach(it=>{ const c=lineCalc(it,it.qty); sub+=c.base; disc+=c.save; tax+=c.gst; cgst+=c.cgst; sgst+=c.sgst; });
+    document.getElementById('subtotal').textContent=fmt(sub);
+    document.getElementById('disc-show').textContent=fmt(disc);
+    document.getElementById('cgst-show').textContent=fmt(cgst);
+    document.getElementById('sgst-show').textContent=fmt(sgst);
+    document.getElementById('tax-show').textContent=fmt(tax);
+    document.getElementById('grand').textContent=fmt(sub+tax);
+  }
+
+  async function search(term){
+    const my=++seq; statusEl.textContent='…'; activeIdx=-1;
+    try{
+      const r = await fetch('/api/products/search?q='+encodeURIComponent(term||''), {credentials:'same-origin'});
+      if(my!==seq) return;
+      const rows = await r.json();
+      suggest.innerHTML='';
+      if(!Array.isArray(rows)||!rows.length){
+        suggest.innerHTML='<div style="padding:12px;color:var(--text-secondary)">'+esc(MSG.noResults)+'</div>';
+        suggest.classList.add('open'); statusEl.textContent=MSG.noResults; return;
+      }
+      rows.forEach((p,i)=>{
+        const b=document.createElement('button'); b.type='button'; b.dataset.i=i;
+        const stCls = stockClass(Number(p.stock)||0);
+        b.innerHTML='<strong>'+esc(p.name)+'</strong><span class="meta">'+esc(p.sku)
+          +' · '+esc(MSG.stock)+' <span class="'+stCls+'">'+esc(p.stock)+'</span>'
+          +' · '+esc(MSG.mrp)+' '+fmt(p.mrp)+' · '+esc(MSG.rate)+' '+fmt(p.rate)+' · '+esc(MSG.gst)+' '+p.gst_pct+'%</span>';
+        b.addEventListener('mousedown', e=>{ e.preventDefault(); pickProduct(p); });
+        suggest.appendChild(b);
+      });
+      suggest._rows = rows;
+      suggest.classList.add('open');
+      statusEl.textContent = rows.length+' — '+MSG.searchNavHint;
+    }catch(e){ statusEl.textContent=e.message||MSG.genericError; }
+  }
+
+  function moveActive(delta){
+    const buttons=[...suggest.querySelectorAll('button')];
+    if(!buttons.length) return;
+    activeIdx = (activeIdx+delta+buttons.length)%buttons.length;
+    buttons.forEach((b,i)=>b.classList.toggle('active', i===activeIdx));
+    buttons[activeIdx].scrollIntoView({block:'nearest'});
+  }
+
+  q.addEventListener('input', ()=>{ clearTimeout(timer); timer=setTimeout(()=>search(q.value.trim()),110); });
+  q.addEventListener('focus', ()=>{ if(q.value.trim()) search(q.value.trim()); });
+  q.addEventListener('keydown', e=>{
+    if(e.key==='ArrowDown'){ e.preventDefault(); moveActive(1); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); moveActive(-1); }
+    else if(e.key==='Enter'){
+      e.preventDefault();
+      const rows=suggest._rows||[];
+      if(activeIdx>=0 && rows[activeIdx]) pickProduct(rows[activeIdx]);
+      else if(rows[0]) pickProduct(rows[0]);
+    } else if(e.key==='Tab' && suggest.classList.contains('open') && (suggest._rows||[])[0] && !selected){
+      e.preventDefault();
+      pickProduct(suggest._rows[activeIdx>=0?activeIdx:0]);
+    }
+  });
+
+  qtyEl.addEventListener('input', refreshSelected);
+  qtyEl.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ e.preventDefault(); addSelected(); }
+  });
+  document.getElementById('btn-add').onclick = addSelected;
+
+  const payEl = document.getElementById('payment_mode');
+  const cardWrap = document.getElementById('card-last4-wrap');
+  const cardEl = document.getElementById('card_last4');
+  function syncCardField(){
+    const isCard = payEl.value === 'card';
+    cardWrap.style.display = isCard ? 'block' : 'none';
+    if(!isCard) cardEl.value = '';
+  }
+  payEl.addEventListener('change', syncCardField);
+  cardEl.addEventListener('input', ()=>{ cardEl.value = cardEl.value.replace(/\D/g,'').slice(0,4); });
+  syncCardField();
+
+  document.getElementById('btn-save').onclick = async function(){
+    const err=document.getElementById('bill-err'); err.style.display='none';
+    if(!cart.length){ err.textContent=MSG.emptyCart; err.style.display='block'; return; }
+    const mobile=(document.getElementById('customer_mobile').value||'').replace(/\D/g,'');
+    if(mobile.length!==10){
+      err.textContent=MSG.mobileRequired; err.style.display='block';
+      document.getElementById('customer_mobile').focus(); return;
+    }
+    const payment_mode = payEl.value;
+    const card_last4 = (cardEl.value||'').replace(/\D/g,'');
+    if(payment_mode==='card' && card_last4.length!==4){
+      err.textContent=MSG.cardLast4Required; err.style.display='block'; cardEl.focus(); return;
+    }
+    const payload={
+      customer_name:document.getElementById('customer_name').value,
+      customer_mobile:mobile,
+      payment_mode, card_last4,
+      items: cart.map(it=>({
+        product_id:it.product_id, sku:it.sku, name:it.name, qty:it.qty,
+        mrp:it.mrp, discount:it.discount, unit_price:it.rate, rate:it.rate,
+        gst_pct:it.gst_pct, cost:it.cost
+      }))
+    };
+    try{
+      const r=await fetch('/api/bills/'+BILL_ID,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const data=await r.json();
+      if(!data.ok){
+        err.textContent = data.error || data.detail || MSG.genericError;
+        err.style.display='block';
+        return;
+      }
+      window.location='/bills/'+BILL_ID;
+    }catch(ex){ err.textContent=ex.message||MSG.genericError; err.style.display='block'; }
+  };
+
+  (function custLookup(){
+    const mobileEl=document.getElementById('customer_mobile');
+    const nameEl=document.getElementById('customer_name');
+    const st=document.getElementById('cust-status');
+    let t=null;
+    async function run(){
+      const m=(mobileEl.value||'').replace(/\D/g,'').slice(0,10);
+      mobileEl.value=m;
+      if(m.length<10){ st.textContent=m?MSG.mobileInvalid:''; st.className='cust-status'+(m?' err':''); return; }
+      try{
+        const r=await fetch('/api/customers/lookup?mobile='+encodeURIComponent(m),{credentials:'same-origin'});
+        const d=await r.json();
+        if(d.found){
+          if(d.name) nameEl.value=d.name;
+          st.textContent=MSG.customerFound+(d.name?(': '+d.name):'');
+          st.className='cust-status found';
+        }else{ st.textContent=MSG.customerNew; st.className='cust-status new'; }
+      }catch(_){ st.textContent=''; }
+    }
+    mobileEl.addEventListener('input',()=>{ clearTimeout(t); t=setTimeout(run,200); });
+    mobileEl.addEventListener('blur', run);
+    if((mobileEl.value||'').replace(/\D/g,'').length===10) run();
+  })();
+
+  renderCart();
+})();
+</script>
+{% endblock %}
