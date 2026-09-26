@@ -7,7 +7,7 @@ import sys
 ROOT = os.path.dirname(os.path.abspath(__file__))
 HOST = os.environ.get("BILLINGPRO_HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT") or os.environ.get("BILLINGPRO_PORT", "8003"))
-HTTPS = os.environ.get("BILLINGPRO_HTTPS", "1").lower() not in ("0", "false", "no")
+HTTPS = os.environ.get("BILLINGPRO_HTTPS", "0").lower() in ("1", "true", "yes")
 HTTPS_PORT = int(os.environ.get("BILLINGPRO_HTTPS_PORT", "8443"))
 
 

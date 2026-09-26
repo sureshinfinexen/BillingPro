@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ t('help_guide') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('help_guide') }}{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:14px">
+  <div class="card-body" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
+    <div>
+      <strong>{{ t('getting_started') }}</strong>
+      <p style="margin:6px 0 0;font-size:13px;color:var(--text-secondary)">Follow the steps below in order. Download the PDF for printing / sharing.</p>
+    </div>
+    <a class="btn btn-primary" href="/help/guide.pdf">{{ t('download_pdf_guide') }}</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:12px">
+  <div class="card-header"><h2>0. Start the app</h2></div>
+  <div class="card-body" style="font-size:14px">
+    <ul>
+      <li>Run <code>START_BILLINGPRO.bat</code> or <code>python run.py</code></li>
+      <li>Open <strong>http://localhost:8003</strong></li>
+      <li>Default logins: <code>superadmin</code> / <code>superadmin123</code> · <code>admin</code> / <code>admin123</code> · <code>cashier</code> / <code>cashier123</code></li>
+      <li>Change passwords after first login (production)</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:12px">
+  <div class="card-header"><h2>1. Super Admin (new shop / features)</h2></div>
+  <div class="card-body" style="font-size:14px">
+    <ul>
+      <li><strong>Shops / branches</strong> — add the shop</li>
+      <li><strong>Features &amp; admin</strong> — enable modules sold to that shop</li>
+      <li>Create a <strong>store admin</strong> for that shop</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:12px">
+  <div class="card-header"><h2>2. Store Admin — setup (do in this order)</h2></div>
+  <div class="card-body" style="font-size:14px">
+    <ul>
+      <li><strong>Settings</strong> — shop name, GST default %, bill greeting, theme</li>
+      <li><strong>Counters</strong> — billing counters (e.g. Counter 1)</li>
+      <li><strong>Employees</strong> — add cashiers; link each to a counter</li>
+      <li><strong>Assign pages</strong> — tick screens each cashier may use → Save</li>
+      <li><strong>Suppliers</strong> — add vendors you buy from</li>
+      <li><strong>Products</strong> — add items (or Excel/CSV upload); set MRP, cost, GST</li>
+      <li>Or open <a href="/samples"><strong>Sample templates</strong></a> → <strong>Load demo pack</strong> for instant test data</li>
+      <li><strong>Purchases / GRN</strong> — receive stock from a supplier (qty + purchase rate)</li>
+      <li><strong>Supplier templates</strong> (optional) — save monthly purchase lists; upload Excel; Receive into stock</li>
+      <li><strong>Stock</strong> — verify quantities; adjust if needed</li>
+      <li><strong>Warehouses / Batches</strong> (optional) — if those features are enabled</li>
+      <li><strong>Loyalty / Coupons</strong> (optional)</li>
+      <li>Print barcode labels from Products if needed</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:12px">
+  <div class="card-header"><h2>3. Daily billing (cashier)</h2></div>
+  <div class="card-body" style="font-size:14px">
+    <ul>
+      <li><strong>New Bill</strong> — scan / search product → pay (cash / card / UPI / split)</li>
+      <li><strong>Held bills</strong> — pause and recall a bill</li>
+      <li><strong>Bills</strong> — view, reprint, edit (if allowed)</li>
+      <li><strong>Returns</strong> — return items / credit note</li>
+      <li><strong>Credit (Udhaar)</strong> — credit sale and collections</li>
+      <li><strong>Day close</strong> — end-of-day cash summary</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:12px">
+  <div class="card-header"><h2>4. Reports &amp; tax</h2></div>
+  <div class="card-body" style="font-size:14px">
+    <ul>
+      <li><strong>Dashboard / Reports</strong> — sales, profit overview</li>
+      <li><strong>Shifts</strong> — counter / staff sales</li>
+      <li><strong>GST export</strong> — CSV for returns</li>
+      <li><strong>Audit log</strong> — who changed what</li>
+      <li><strong>Reorder</strong> — low stock list</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:12px">
+  <div class="card-header"><h2>5. Menu map (left sidebar)</h2></div>
+  <div class="card-body" style="font-size:14px">
+    <ul>
+      <li><strong>Overview</strong> — Dashboard, Reports, Shifts, Day close</li>
+      <li><strong>Billing</strong> — New Bill, Holds, Bills, Returns, Credit</li>
+      <li><strong>Inventory</strong> — Suppliers → Products → Purchases → Templates → Stock → Reorder → Warehouses → Batches</li>
+      <li><strong>Customers</strong> — Loyalty, Coupons</li>
+      <li><strong>Reports &amp; tax</strong> — GST export, Audit</li>
+      <li><strong>Administration</strong> — Settings, Counters, Employees, Assign pages, Shops, Offline</li>
+      <li><strong>Help</strong> — this guide + PDF</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

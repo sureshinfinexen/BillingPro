@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ t('print_barcodes') }} · {{ APP_NAME }}{% endblock %}
-{% block page_title %}{{ t('print_barcodes') }}{% endblock %}
+{% block page_title %}{% if layout=='code' %}{{ t('print_code_name') }}{% else %}{{ t('print_barcodes') }}{% endif %}{% endblock %}
 {% block head %}
 <style>
 .bc-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
@@ -10,26 +10,41 @@
   text-align:center;break-inside:avoid;page-break-inside:avoid;
   display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:110px
 }
+.bc-label.layout-code{min-height:90px}
 .bc-name{font-size:12px;font-weight:700;line-height:1.25;max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.bc-label.layout-code .bc-name{font-size:13px;-webkit-line-clamp:3}
 .bc-price{font-size:15px;font-weight:800;color:var(--primary);margin:4px 0 2px}
 .bc-sku{font-size:10px;letter-spacing:.04em;color:#64748b;margin-top:2px}
+.bc-label.layout-code .bc-sku{font-size:14px;font-weight:800;letter-spacing:.06em;color:var(--text-primary);margin-top:6px;font-family:ui-monospace,monospace}
 .bc-label svg{max-width:100%;height:42px}
+.bc-label.layout-code svg{height:48px}
 @media print{
   .no-print,.sidebar,.topbar,.footer,.app-bg,.app-bg-glass{display:none!important}
   .main{margin:0!important;width:100%!important;max-width:100%!important}
   .content{padding:4mm!important}
   .bc-sheet{grid-template-columns:repeat(3,1fr);gap:3mm}
   .bc-label{border:1px solid #94a3b8;border-radius:2px;padding:3mm;min-height:28mm}
+  .bc-label.layout-code{min-height:24mm}
   @page{margin:6mm;size:A4}
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 {% endblock %}
 {% block content %}
+{% set qs_ids = ('ids=' + ids) if ids else '' %}
+{% set qs_q = ('q=' + (q|urlencode)) if q else '' %}
+{% set qs_base = qs_ids or qs_q %}
 <div class="bc-toolbar no-print">
   <a href="/products" class="btn btn-outline">← {{ t('products') }}</a>
   <button type="button" class="btn btn-primary" onclick="window.print()">{{ t('print') }}</button>
-  <span style="font-size:12px;color:var(--text-secondary)">{{ products|length }} {{ t('labels') }} · {{ t('barcode_print_hint') }}</span>
+  <a href="/products/barcodes?layout=code{% if qs_base %}&{{ qs_base }}{% endif %}"
+     class="btn btn-outline {% if layout=='code' %}btn-primary{% endif %}">{{ t('print_code_name') }}</a>
+  <a href="/products/barcodes?layout=full{% if qs_base %}&{{ qs_base }}{% endif %}"
+     class="btn btn-outline {% if layout!='code' %}btn-primary{% endif %}">{{ t('print_with_price') }}</a>
+  <span style="font-size:12px;color:var(--text-secondary)">
+    {{ products|length }} {{ t('labels') }} ·
+    {% if layout=='code' %}{{ t('print_code_name_hint') }}{% else %}{{ t('barcode_print_hint') }}{% endif %}
+  </span>
 </div>
 
 {% if not products %}
@@ -37,9 +52,11 @@
 {% else %}
 <div class="bc-sheet" id="bc-sheet">
   {% for p in products %}
-  <div class="bc-label" data-code="{{ p.sku }}">
+  <div class="bc-label {% if layout=='code' %}layout-code{% endif %}" data-code="{{ p.sku }}">
     <div class="bc-name">{{ d(p.name) }}</div>
+    {% if layout != 'code' %}
     <div class="bc-price">₹{{ (p.price or 0)|money }}</div>
+    {% endif %}
     <svg class="bc-svg"></svg>
     <div class="bc-sku">{{ p.sku }}</div>
   </div>
@@ -55,7 +72,7 @@
       JsBarcode(svg, code, {
         format: 'CODE128',
         width: 1.4,
-        height: 42,
+        height: el.classList.contains('layout-code') ? 48 : 42,
         displayValue: false,
         margin: 0,
         background: '#ffffff'

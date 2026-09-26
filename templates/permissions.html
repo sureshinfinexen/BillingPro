@@ -2,7 +2,7 @@
 {% block title %}{{ t('assign_pages') }} · {{ APP_NAME }}{% endblock %}
 {% block page_title %}{{ t('assign_pages') }}{% endblock %}
 {% block content %}
-{% if saved %}<div class="alert alert-ok">{{ t('saved_ok') }}</div>{% endif %}
+{% if saved %}<div class="alert alert-ok">{{ t('assign_pages_saved') }}</div>{% endif %}
 <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">{{ t('assign_pages_help') }}</p>
 {% for s in staff %}
 <div class="card" style="margin-bottom:12px">

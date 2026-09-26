@@ -217,10 +217,12 @@ th.center,td.center{text-align:center}
     {% if can_page('stock') or can_page('reorder') or can_page('products') or can_page('purchases') or can_page('warehouses') or can_page('batches') %}
     <div class="nav-group">
       <span class="nav-label">{{ t('nav_inventory') }}</span>
-      {% if can_page('stock') %}<a href="/stock" class="{{ 'active' if active=='stock' }}">📋 {{ t('stock') }}</a>{% endif %}
-      {% if can_page('reorder') %}<a href="/reorder" class="{{ 'active' if active=='reorder' }}">⚠️ {{ t('reorder') }}</a>{% endif %}
+      {% if can_page('purchases') %}<a href="/suppliers" class="{{ 'active' if active=='suppliers' }}">🚚 {{ t('suppliers') }}</a>{% endif %}
       {% if can_page('products') %}<a href="/products" class="{{ 'active' if active=='products' }}">📦 {{ t('products') }}</a>{% endif %}
       {% if can_page('purchases') %}<a href="/purchases" class="{{ 'active' if active=='purchases' }}">📥 {{ t('purchases') }}</a>{% endif %}
+      {% if can_page('purchases') %}<a href="/purchase-templates" class="{{ 'active' if active=='purchase_templates' }}">📋 {{ t('purchase_templates') }}</a>{% endif %}
+      {% if can_page('stock') %}<a href="/stock" class="{{ 'active' if active=='stock' }}">📋 {{ t('stock') }}</a>{% endif %}
+      {% if can_page('reorder') %}<a href="/reorder" class="{{ 'active' if active=='reorder' }}">⚠️ {{ t('reorder') }}</a>{% endif %}
       {% if can_page('warehouses') %}<a href="/warehouses" class="{{ 'active' if active=='warehouses' }}">🏭 {{ t('warehouses') }}</a>{% endif %}
       {% if can_page('batches') %}<a href="/batches" class="{{ 'active' if active=='batches' }}">🏷️ {{ t('batches') }}</a>{% endif %}
     </div>
@@ -245,14 +247,20 @@ th.center,td.center{text-align:center}
     {% if can_page('shops') or can_page('counters') or can_page('employees') or can_page('permissions') or can_page('offline') or can_page('settings') or can_page('features') %}
     <div class="nav-group">
       <span class="nav-label">{{ t('nav_admin') }}</span>
-      {% if can_page('shops') %}<a href="/shops" class="{{ 'active' if active=='shops' }}">🏢 {{ t('shops') }}</a>{% endif %}
+      {% if can_page('settings') %}<a href="/settings" class="{{ 'active' if active=='settings' }}">⚙️ {{ t('settings') }}</a>{% endif %}
       {% if can_page('counters') %}<a href="/counters" class="{{ 'active' if active=='counters' }}">🏪 {{ t('counters') }}</a>{% endif %}
       {% if can_page('employees') %}<a href="/employees" class="{{ 'active' if active=='employees' }}">👥 {{ t('employees') }}</a>{% endif %}
       {% if can_page('permissions') %}<a href="/permissions" class="{{ 'active' if active=='permissions' }}">🔐 {{ t('assign_pages') }}</a>{% endif %}
+      {% if can_page('shops') %}<a href="/shops" class="{{ 'active' if active=='shops' }}">🏢 {{ t('shops') }}</a>{% endif %}
       {% if can_page('offline') %}<a href="/offline" class="{{ 'active' if active=='offline' }}">📴 {{ t('offline') }}</a>{% endif %}
-      {% if can_page('settings') %}<a href="/settings" class="{{ 'active' if active=='settings' }}">⚙️ {{ t('settings') }}</a>{% endif %}
     </div>
     {% endif %}
+
+    <div class="nav-group">
+      <span class="nav-label">{{ t('nav_help') }}</span>
+      <a href="/help" class="{{ 'active' if active=='help' }}">❓ {{ t('help_guide') }}</a>
+      <a href="/samples" class="{{ 'active' if active=='samples' }}">📥 {{ t('sample_templates') }}</a>
+    </div>
   </nav>
 </aside>
 <div class="main">

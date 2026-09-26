@@ -1,0 +1,13 @@
+﻿sku,name,mrp,discount,cost,stock,unit,category,gst
+101,Toor Dal 1kg,140,10,95,0,bag,Grocery,5
+102,Sugar 1kg,55,0,42,0,bag,Grocery,5
+103,Tea Dust 250g,120,15,70,0,pack,Grocery,5
+104,Wheat Flour 1kg,60,5,40,0,bag,Grocery,5
+105,Curd 400g,35,0,22,0,cup,Dairy,5
+106,Butter 100g,62,2,45,0,pcs,Dairy,12
+107,Eggs Tray 12,90,0,65,0,tray,Dairy,0
+108,Tomato Sauce 500g,95,10,55,0,bottle,Food,12
+109,Biscuits Pack,40,5,22,0,pack,Food,18
+110,Hand Wash 250ml,85,10,40,0,bottle,Personal Care,18
+111,Toothpaste 100g,75,8,38,0,pcs,Personal Care,18
+112,Notebook A4,50,0,28,0,pcs,Stationery,12

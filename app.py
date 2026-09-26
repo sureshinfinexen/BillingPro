@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from markupsafe import Markup
 
@@ -371,11 +372,11 @@ async def init_db():
         if not p:
             samples = [
                 # sku, name, mrp, discount, cost, stock, unit, cat, gst
-                ("RICE1KG", "Rice 1kg", 70, 10, 45, 100, "bag", "Grocery", 5),
-                ("OIL1L", "Cooking Oil 1L", 200, 20, 140, 50, "bottle", "Grocery", 5),
-                ("MILK500", "Milk 500ml", 32, 4, 22, 80, "pack", "Dairy", 5),
-                ("BREAD", "Bread", 45, 5, 28, 40, "pcs", "Bakery", 5),
-                ("SOAP", "Bath Soap", 45, 10, 20, 120, "pcs", "Personal Care", 18),
+                ("001", "Rice 1kg", 70, 10, 45, 100, "bag", "Grocery", 5),
+                ("002", "Cooking Oil 1L", 200, 20, 140, 50, "bottle", "Grocery", 5),
+                ("003", "Milk 500ml", 32, 4, 22, 80, "pack", "Dairy", 5),
+                ("004", "Bread", 45, 5, 28, 40, "pcs", "Bakery", 5),
+                ("005", "Bath Soap", 45, 10, 20, 120, "pcs", "Personal Care", 18),
             ]
             for sku, name, mrp, disc, cost, stock, unit, cat, gst in samples:
                 rate = calc_rate(mrp, disc)
@@ -435,6 +436,43 @@ def product_effective_gst(row) -> float:
 
 def calc_rate(mrp, discount) -> float:
     return money(max(0.0, money(mrp) - money(discount)))
+
+
+def normalize_sku(raw) -> str:
+    """Keep leading zeros. Prefer digits-only codes like 001, 002."""
+    s = str(raw or "").strip()
+    return s
+
+
+def format_numeric_sku(n: int, width: int = 3) -> str:
+    n = max(1, int(n))
+    w = max(int(width), len(str(n)), 3)
+    return f"{n:0{w}d}"
+
+
+async def next_numeric_sku(db, shop_id: int | None) -> str:
+    """Next free numeric SKU for shop: 001, 002, …"""
+    sid = int(shop_id or 0)
+    rows = await db.fetchall(
+        "SELECT sku FROM product WHERE COALESCE(shop_id,0)=?",
+        (sid,),
+    )
+    max_n = 0
+    for r in rows or []:
+        s = str(r.get("sku") or "").strip()
+        if s.isdigit():
+            max_n = max(max_n, int(s))
+    n = max_n + 1
+    for _ in range(200):
+        candidate = format_numeric_sku(n)
+        exists = await db.fetchone(
+            "SELECT id FROM product WHERE COALESCE(shop_id,0)=? AND sku=?",
+            (sid, candidate),
+        )
+        if not exists:
+            return candidate
+        n += 1
+    return format_numeric_sku(int(datetime.now().timestamp()) % 100000)
 
 
 def parse_card_last4(raw) -> str:
@@ -523,6 +561,8 @@ async def next_bill_no(db, shop_id=None) -> str:
 
 
 def session_user_from_row(row) -> dict:
+    pages = row.get("pages")
+    perms = row.get("permissions")
     return {
         "id": row["id"],
         "name": row["name"],
@@ -530,10 +570,34 @@ def session_user_from_row(row) -> dict:
         "role": row["role"],
         "counter_id": row.get("counter_id"),
         "shop_id": row.get("shop_id"),
-        "permissions": row.get("permissions") or "",
-        "pages": row.get("pages") or "",
+        "permissions": "" if perms is None else str(perms),
+        "pages": "" if pages is None else str(pages),
         "theme_preset": (row.get("theme_preset") or "").strip(),
     }
+
+
+async def refresh_session_access(request: Request) -> None:
+    """Reload pages/role/shop from DB so Assign pages take effect without re-login."""
+    u = request.session.get("user")
+    if not u or not u.get("id"):
+        return
+    path = request.url.path or ""
+    if path.startswith("/static") or path.startswith("/uploads"):
+        return
+    try:
+        async with await get_conn() as db:
+            row = await db.fetchone(
+                "SELECT * FROM staff WHERE id=? AND active=1", (u["id"],)
+            )
+            if not row:
+                request.session.clear()
+                return
+            request.session["user"] = session_user_from_row(row)
+            request.session["shop_features"] = await load_shop_features_for_user(db, row)
+            if row.get("theme_preset"):
+                request.session["theme_preset"] = (row.get("theme_preset") or "").strip()
+    except Exception:
+        pass
 
 
 async def load_shop_features_for_user(db, row) -> str:
@@ -576,6 +640,18 @@ async def lifespan(app):
 
 
 app = FastAPI(title="BillingPro", lifespan=lifespan)
+
+
+class _RefreshAccessMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Runs after SessionMiddleware (added below, so session is available).
+        if request.session.get("user"):
+            await refresh_session_access(request)
+        return await call_next(request)
+
+
+# Last add_middleware = outermost on the request. Session must wrap refresh.
+app.add_middleware(_RefreshAccessMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 os.makedirs(os.path.join(_base, "static"), exist_ok=True)
 os.makedirs(os.path.join(_base, "uploads", "branding"), exist_ok=True)
@@ -657,6 +733,256 @@ async def logout(request: Request):
     return RedirectResponse("/login", 302)
 
 
+@app.get("/help", response_class=HTMLResponse)
+async def help_page(request: Request):
+    u = require_login(request)
+    if not u:
+        return RedirectResponse("/login", 302)
+    return templates.TemplateResponse(
+        "help.html", tctx(request, user=u, active="help")
+    )
+
+
+@app.get("/help/guide.pdf")
+async def help_guide_pdf(request: Request):
+    u = require_login(request)
+    if not u:
+        return RedirectResponse("/login", 302)
+    pdf_path = os.path.join(_base, "docs", "BillingPro_Getting_Started_Guide.pdf")
+    if not os.path.isfile(pdf_path):
+        try:
+            import runpy
+            runpy.run_path(
+                os.path.join(_base, "scripts", "build_getting_started_pdf.py"),
+                run_name="__main__",
+            )
+        except Exception as e:
+            raise HTTPException(500, f"PDF guide unavailable: {e}") from e
+    if not os.path.isfile(pdf_path):
+        raise HTTPException(404, "PDF guide not found")
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename="BillingPro_Getting_Started_Guide.pdf",
+    )
+
+
+@app.get("/samples", response_class=HTMLResponse)
+async def samples_page(request: Request):
+    u = require_login(request)
+    if not u:
+        return RedirectResponse("/login", 302)
+    from sample_pack import SAMPLE_FILES
+    return templates.TemplateResponse(
+        "samples.html",
+        tctx(
+            request, user=u, active="samples",
+            samples=SAMPLE_FILES,
+            saved=request.query_params.get("saved"),
+            error=request.query_params.get("error"),
+            demo_counts=request.query_params.get("counts"),
+        ),
+    )
+
+
+@app.get("/samples/zip")
+async def samples_zip(request: Request):
+    u = require_login(request)
+    if not u:
+        return RedirectResponse("/login", 302)
+    from sample_pack import build_zip
+    data = build_zip()
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=BillingPro_All_Samples.zip"},
+    )
+
+
+@app.get("/samples/download/{key}")
+async def samples_download(request: Request, key: str):
+    u = require_login(request)
+    if not u:
+        return RedirectResponse("/login", 302)
+    from sample_pack import build_csv, build_xlsx, SAMPLE_FILES
+    if key not in {x["key"] for x in SAMPLE_FILES}:
+        raise HTTPException(404, "Unknown sample")
+    fmt = (request.query_params.get("format") or "csv").lower()
+    try:
+        if fmt == "xlsx":
+            data, fname = build_xlsx(key)
+            media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else:
+            data, fname = build_csv(key)
+            media = "text/csv"
+    except Exception as e:
+        raise HTTPException(500, str(e)) from e
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )
+
+
+@app.post("/samples/load-demo")
+async def samples_load_demo(request: Request):
+    u = require_login(request)
+    if not u or not is_admin(u):
+        return RedirectResponse("/samples?error=admin", 303)
+    shop_id = require_shop_id(u)
+    if not shop_id and is_superadmin(u):
+        # Superadmin: load into first shop
+        async with await get_conn() as db:
+            row = await db.fetchone("SELECT id FROM shop ORDER BY id LIMIT 1")
+            shop_id = row["id"] if row else None
+    if not shop_id:
+        return RedirectResponse("/samples?error=no_shop", 303)
+    from sample_pack import load_demo_pack
+    async with await get_conn() as db:
+        counts = await load_demo_pack(db, int(shop_id), hash_pw, staff_id=u.get("id"))
+        await db.commit()
+    summary = ",".join(f"{k}:{v}" for k, v in counts.items() if v)
+    from urllib.parse import quote
+    return RedirectResponse(
+        f"/samples?saved=1&counts={quote(summary or 'ok')}", 303
+    )
+
+
+def _sample_csv_rows(raw: bytes) -> list[dict]:
+    text = raw.decode("utf-8-sig", errors="replace")
+    return list(csv.DictReader(io.StringIO(text)))
+
+
+@app.post("/samples/upload/suppliers")
+async def samples_upload_suppliers(request: Request, file: UploadFile = File(...)):
+    u = require_login(request)
+    if not u or not is_admin(u):
+        return RedirectResponse("/samples?error=admin", 303)
+    shop_id = require_shop_id(u)
+    rows = _sample_csv_rows(await file.read())
+    n = 0
+    async with await get_conn() as db:
+        for row in rows:
+            name = (row.get("name") or row.get("Name") or "").strip()
+            if not name:
+                continue
+            mobile = (row.get("mobile") or row.get("Mobile") or "").strip()
+            gstin = (row.get("gstin") or row.get("GSTIN") or "").strip().upper()
+            ex = await db.fetchone(
+                "SELECT id FROM supplier WHERE shop_id=? AND lower(name)=lower(?)",
+                (shop_id, name),
+            )
+            if ex:
+                await db.execute(
+                    "UPDATE supplier SET mobile=?, gstin=?, active=1 WHERE id=?",
+                    (mobile, gstin, ex["id"]),
+                )
+            else:
+                await db.execute(
+                    "INSERT INTO supplier (name,mobile,gstin,shop_id,active) VALUES (?,?,?,?,1)",
+                    (name, mobile, gstin, shop_id),
+                )
+            n += 1
+        await db.commit()
+    return RedirectResponse(f"/samples?saved=suppliers-{n}", 303)
+
+
+@app.post("/samples/upload/coupons")
+async def samples_upload_coupons(request: Request, file: UploadFile = File(...)):
+    u = require_login(request)
+    if not u or not is_admin(u):
+        return RedirectResponse("/samples?error=admin", 303)
+    shop_id = require_shop_id(u)
+    rows = _sample_csv_rows(await file.read())
+    n = 0
+    async with await get_conn() as db:
+        for row in rows:
+            code = (row.get("code") or row.get("Code") or "").strip().upper()
+            if not code:
+                continue
+            pct = money(row.get("discount_pct") or row.get("discount") or 0)
+            amt = money(row.get("discount_amt") or 0)
+            mn = money(row.get("min_bill") or 0)
+            ex = await db.fetchone(
+                "SELECT id FROM coupon WHERE shop_id=? AND code=?", (shop_id, code)
+            )
+            if ex:
+                await db.execute(
+                    "UPDATE coupon SET discount_pct=?,discount_amt=?,min_bill=?,active=1 WHERE id=?",
+                    (pct, amt, mn, ex["id"]),
+                )
+            else:
+                await db.execute(
+                    """INSERT INTO coupon (code,discount_pct,discount_amt,min_bill,shop_id,active)
+                       VALUES (?,?,?,?,?,1)""",
+                    (code, pct, amt, mn, shop_id),
+                )
+            n += 1
+        await db.commit()
+    return RedirectResponse(f"/samples?saved=coupons-{n}", 303)
+
+
+@app.post("/samples/upload/customers")
+async def samples_upload_customers(request: Request, file: UploadFile = File(...)):
+    u = require_login(request)
+    if not u or not is_admin(u):
+        return RedirectResponse("/samples?error=admin", 303)
+    shop_id = require_shop_id(u)
+    rows = _sample_csv_rows(await file.read())
+    n = 0
+    async with await get_conn() as db:
+        for row in rows:
+            mobile = (row.get("mobile") or row.get("Mobile") or "").strip()
+            if not mobile:
+                continue
+            name = (row.get("name") or row.get("Name") or "").strip()
+            pts = money(row.get("loyalty_points") or row.get("points") or 0)
+            ex = await db.fetchone(
+                "SELECT id FROM customer WHERE shop_id=? AND mobile=?", (shop_id, mobile)
+            )
+            if ex:
+                await db.execute(
+                    "UPDATE customer SET name=?, loyalty_points=? WHERE id=?",
+                    (name, pts, ex["id"]),
+                )
+            else:
+                await db.execute(
+                    "INSERT INTO customer (name,mobile,loyalty_points,shop_id) VALUES (?,?,?,?)",
+                    (name, mobile, pts, shop_id),
+                )
+            n += 1
+        await db.commit()
+    return RedirectResponse(f"/samples?saved=customers-{n}", 303)
+
+
+@app.post("/samples/upload/warehouses")
+async def samples_upload_warehouses(request: Request, file: UploadFile = File(...)):
+    u = require_login(request)
+    if not u or not is_admin(u):
+        return RedirectResponse("/samples?error=admin", 303)
+    shop_id = require_shop_id(u)
+    rows = _sample_csv_rows(await file.read())
+    n = 0
+    async with await get_conn() as db:
+        for row in rows:
+            code = (row.get("code") or row.get("Code") or "").strip().upper()
+            name = (row.get("name") or row.get("Name") or "").strip()
+            if not code or not name:
+                continue
+            ex = await db.fetchone(
+                "SELECT id FROM warehouse WHERE shop_id=? AND code=?", (shop_id, code)
+            )
+            if not ex:
+                await db.execute(
+                    "INSERT INTO warehouse (shop_id,name,code,active) VALUES (?,?,?,1)",
+                    (shop_id, name, code),
+                )
+                n += 1
+        await db.commit()
+    return RedirectResponse(f"/samples?saved=warehouses-{n}", 303)
+
+
 @app.post("/lang/{code}")
 async def set_lang(request: Request, code: str):
     if code in SUPPORTED_LANGS:
@@ -731,8 +1057,8 @@ async def products_list(request: Request, q: str = ""):
 
 
 @app.get("/products/barcodes", response_class=HTMLResponse)
-async def products_barcodes(request: Request, ids: str = "", q: str = ""):
-    """Printable sticker labels: name + price + Code128 barcode (SKU)."""
+async def products_barcodes(request: Request, ids: str = "", q: str = "", layout: str = "full"):
+    """Printable sticker labels. layout=full (name+price+code) or code (name+code only)."""
     u, redir = require_page(request, "products")
     if redir:
         return redir
@@ -742,6 +1068,9 @@ async def products_barcodes(request: Request, ids: str = "", q: str = ""):
         part = part.strip()
         if part.isdigit():
             id_list.append(int(part))
+    layout = (layout or "full").strip().lower()
+    if layout not in ("full", "code"):
+        layout = "full"
     async with await get_conn() as db:
         if id_list:
             placeholders = ",".join("?" for _ in id_list)
@@ -767,38 +1096,28 @@ async def products_barcodes(request: Request, ids: str = "", q: str = ""):
             )
     return templates.TemplateResponse(
         "barcode_labels.html",
-        tctx(request, user=u, products=rows, active="products"),
+        tctx(
+            request, user=u, products=rows, active="products",
+            layout=layout,
+            ids=ids or "",
+            q=q or "",
+        ),
     )
 
 
 @app.get("/api/products/next-sku")
 async def api_next_sku(request: Request):
-    """Suggest a unique scannable SKU/barcode for the shop."""
+    """Suggest next numeric SKU for the shop: 001, 002, 003…"""
     u = cur_user(request)
     if not u:
         return JSONResponse({"ok": False}, 401)
     try:
-        sid = int(u.get("shop_id") or require_shop_id(u) or 1)
+        sid = int(u.get("shop_id") or require_shop_id(u) or 0)
     except (TypeError, ValueError):
-        sid = 1
-    prefix = f"P{sid:02d}"
+        sid = 0
     async with await get_conn() as db:
-        row = await db.fetchone(
-            """SELECT COUNT(*) AS c FROM product
-               WHERE COALESCE(shop_id,0)=? AND sku LIKE ?""",
-            (sid, prefix + "%"),
-        )
-        n = int(row["c"] or 0) + 1
-        for _ in range(50):
-            candidate = f"{prefix}{n:05d}"
-            exists = await db.fetchone(
-                "SELECT id FROM product WHERE COALESCE(shop_id,0)=? AND UPPER(sku)=UPPER(?)",
-                (sid, candidate),
-            )
-            if not exists:
-                return JSONResponse({"ok": True, "sku": candidate})
-            n += 1
-    return JSONResponse({"ok": True, "sku": f"{prefix}{int(datetime.now().timestamp()) % 100000:05d}"})
+        sku = await next_numeric_sku(db, sid)
+    return JSONResponse({"ok": True, "sku": sku})
 
 
 @app.get("/products/new", response_class=HTMLResponse)
@@ -806,11 +1125,19 @@ async def product_new_get(request: Request):
     u, redir = require_page(request, "products")
     if redir:
         return redir
+    suggested = ""
+    try:
+        sid = require_shop_id(u)
+        async with await get_conn() as db:
+            suggested = await next_numeric_sku(db, sid)
+    except Exception:
+        suggested = "001"
     return templates.TemplateResponse(
         "product_form.html",
         tctx(
             request, user=u, product=None, error=None, active="products",
             default_gst=default_gst_pct(),
+            suggested_sku=suggested,
         ),
     )
 
@@ -818,7 +1145,7 @@ async def product_new_get(request: Request):
 @app.post("/products/new", response_class=HTMLResponse)
 async def product_new_post(
     request: Request,
-    sku: str = Form(...), name: str = Form(...),
+    sku: str = Form(""), name: str = Form(...),
     mrp: str = Form("0"), discount: str = Form("0"),
     cost: str = Form("0"), stock: str = Form("0"), unit: str = Form("pcs"),
     category: str = Form(""), gst_pct: str = Form(""),
@@ -835,27 +1162,70 @@ async def product_new_post(
     def_gst = default_gst_pct()
     gst_v = money(gst_pct) if use_override and str(gst_pct).strip() != "" else def_gst
     override = 1 if use_override else 0
+    shop_sid = require_shop_id(u)
     try:
         async with await get_conn() as db:
+            sku_v = normalize_sku(sku)
+            if sku_v and not sku_v.isdigit():
+                sku_v = sku_v.upper()
+            if not sku_v:
+                sku_v = await next_numeric_sku(db, shop_sid)
             await db.execute(
                 """INSERT INTO product
                    (sku,name,mrp,discount,price,cost,stock,unit,category,gst_pct,gst_override,hsn,reorder_level,shop_id,active)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)""",
-                (sku.strip().upper(), name.strip(), mrp_v, disc_v, rate, money(cost),
+                (sku_v, name.strip(), mrp_v, disc_v, rate, money(cost),
                  money(stock), unit.strip() or "pcs", category.strip(), gst_v, override,
-                 hsn.strip(), money(reorder_level), require_shop_id(u)),
+                 hsn.strip(), money(reorder_level), shop_sid),
             )
             await db.commit()
     except Exception as e:
+        suggested = "001"
+        try:
+            async with await get_conn() as db:
+                suggested = await next_numeric_sku(db, shop_sid)
+        except Exception:
+            pass
         return templates.TemplateResponse(
             "product_form.html",
             tctx(
                 request, user=u, product=None, error=str(e), active="products",
-                default_gst=def_gst,
+                default_gst=def_gst, suggested_sku=suggested,
             ),
             status_code=400,
         )
     return RedirectResponse("/products?saved=1", 302)
+
+
+@app.post("/products/renumber-skus")
+async def products_renumber_skus(request: Request):
+    """Rewrite all product SKUs in shop to 001, 002, 003… (by product id order)."""
+    u, redir = require_page(request, "products")
+    if redir:
+        return redir
+    sh, sp = sql_shop(u)
+    async with await get_conn() as db:
+        rows = await db.fetchall(
+            f"SELECT id FROM product WHERE 1=1{sh} ORDER BY id",
+            sp,
+        )
+        if not rows:
+            return RedirectResponse("/products?saved=renumbered-0", 302)
+        # Phase 1: unique temp codes (avoid unique collisions)
+        for r in rows:
+            await db.execute(
+                "UPDATE product SET sku=? WHERE id=?",
+                (f"__TMP__{int(r['id'])}", int(r["id"])),
+            )
+        # Phase 2: sequential numeric codes
+        width = max(3, len(str(len(rows))))
+        for i, r in enumerate(rows, start=1):
+            await db.execute(
+                "UPDATE product SET sku=? WHERE id=?",
+                (format_numeric_sku(i, width), int(r["id"])),
+            )
+        await db.commit()
+    return RedirectResponse(f"/products?saved=renumbered-{len(rows)}", 302)
 
 
 @app.get("/products/{pid}/edit", response_class=HTMLResponse)
@@ -906,7 +1276,7 @@ async def product_edit_post(
         await db.execute(
             f"""UPDATE product SET sku=?,name=?,mrp=?,discount=?,price=?,cost=?,stock=?,unit=?,
                category=?,gst_pct=?,gst_override=?,hsn=?,reorder_level=?,active=? WHERE id=?{sh}""",
-            (sku.strip().upper(), name.strip(), mrp_v, disc_v, rate, money(cost), money(stock),
+            (normalize_sku(sku), name.strip(), mrp_v, disc_v, rate, money(cost), money(stock),
              unit.strip() or "pcs", category.strip(), gst_v, override, hsn.strip(),
              money(reorder_level), int(active), pid, *sp),
         )
@@ -930,6 +1300,20 @@ async def product_delete(request: Request, pid: int):
     return RedirectResponse("/products?saved=deleted", 302)
 
 
+@app.get("/products/csv-template")
+async def products_csv_template(request: Request):
+    u, redir = require_page(request, "products")
+    if redir:
+        return redir
+    from sample_pack import build_csv
+    data, fname = build_csv("products")
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )
+
+
 @app.post("/products/upload", response_class=HTMLResponse)
 async def products_upload(request: Request, file: UploadFile = File(...)):
     u, redir = require_page(request, "products")
@@ -943,17 +1327,23 @@ async def products_upload(request: Request, file: UploadFile = File(...)):
     sh, sp = sql_shop(u)
     async with await get_conn() as db:
         for row in reader:
-            sku = (row.get("sku") or row.get("SKU") or "").strip().upper()
             name = (row.get("name") or row.get("Name") or "").strip()
-            if not sku or not name:
+            if not name:
                 continue
+            sku = normalize_sku(row.get("sku") or row.get("SKU") or "")
+            if sku and not sku.isdigit():
+                sku = sku.upper()
+            existing = None
+            if sku:
+                existing = await db.fetchone(
+                    f"SELECT id FROM product WHERE sku=?{sh}", (sku, *sp)
+                )
+            else:
+                # Auto-generate next numeric code for new product
+                sku = await next_numeric_sku(db, sid)
             price = money(row.get("price") or row.get("Price") or row.get("rate") or row.get("Rate") or 0)
-            stock = money(row.get("stock") or row.get("Stock") or 0)
             unit = (row.get("unit") or row.get("Unit") or "pcs").strip()
             cat = (row.get("category") or row.get("Category") or "").strip()
-            existing = await db.fetchone(
-                f"SELECT id FROM product WHERE sku=?{sh}", (sku, *sp)
-            )
             cost = money(row.get("cost") or row.get("Cost") or 0)
             gst_raw = row.get("gst") or row.get("gst_pct") or row.get("GST")
             if gst_raw is not None and str(gst_raw).strip() != "":
@@ -967,13 +1357,24 @@ async def products_upload(request: Request, file: UploadFile = File(...)):
             if disc <= 0 and mrp > price > 0:
                 disc = money(mrp - price)
             rate = calc_rate(mrp, disc) if mrp else price
+            stock_raw = row.get("stock") if row.get("stock") is not None else row.get("Stock")
+            has_stock = stock_raw is not None and str(stock_raw).strip() != ""
+            stock = money(stock_raw) if has_stock else 0
             if existing:
-                await db.execute(
-                    f"""UPDATE product SET name=?,mrp=?,discount=?,price=?,cost=?,stock=?,unit=?,category=?,
-                       gst_pct=?,gst_override=?,active=1
-                       WHERE sku=?{sh}""",
-                    (name, mrp, disc, rate, cost, stock, unit, cat, gst, gst_override, sku, *sp),
-                )
+                if has_stock:
+                    await db.execute(
+                        f"""UPDATE product SET name=?,mrp=?,discount=?,price=?,cost=?,stock=?,unit=?,category=?,
+                           gst_pct=?,gst_override=?,active=1
+                           WHERE sku=?{sh}""",
+                        (name, mrp, disc, rate, cost, stock, unit, cat, gst, gst_override, sku, *sp),
+                    )
+                else:
+                    await db.execute(
+                        f"""UPDATE product SET name=?,mrp=?,discount=?,price=?,cost=?,unit=?,category=?,
+                           gst_pct=?,gst_override=?,active=1
+                           WHERE sku=?{sh}""",
+                        (name, mrp, disc, rate, cost, unit, cat, gst, gst_override, sku, *sp),
+                    )
             else:
                 await db.execute(
                     """INSERT INTO product (sku,name,mrp,discount,price,cost,stock,unit,category,gst_pct,gst_override,shop_id,active)
@@ -1826,10 +2227,15 @@ async def reports_page(request: Request):
             sp,
         )
         profit_row = await db.fetchone(
-            f"""SELECT COALESCE(SUM(bi.line_total - (COALESCE(bi.cost,0) * bi.qty)),0) AS profit
+            f"""SELECT
+                      COALESCE(SUM(bi.unit_price * bi.qty),0) AS sales_ex_gst,
+                      COALESCE(SUM(COALESCE(bi.cost,0) * bi.qty),0) AS cogs,
+                      COALESCE(SUM(COALESCE(bi.gst_amt,0)),0) AS gst_collected,
+                      COALESCE(SUM(bi.line_total),0) AS sales_incl_gst,
+                      COALESCE(SUM((bi.unit_price * bi.qty) - (COALESCE(bi.cost,0) * bi.qty)),0) AS profit
                FROM bill_item bi
                JOIN bill b ON b.id=bi.bill_id
-               WHERE 1=1{sb}""",
+               WHERE COALESCE(b.status,'completed')='completed'{sb}""",
             sbp,
         )
         best_buyer = await db.fetchone(
@@ -1903,7 +2309,12 @@ async def reports_page(request: Request):
         "reports.html",
         tctx(
             request, user=u, active="reports",
-            totals=totals, profit=money(profit_row["profit"] if profit_row else 0),
+            totals=totals,
+            profit=money(profit_row["profit"] if profit_row else 0),
+            sales_ex_gst=money(profit_row["sales_ex_gst"] if profit_row else 0),
+            cogs=money(profit_row["cogs"] if profit_row else 0),
+            gst_collected=money(profit_row["gst_collected"] if profit_row else 0),
+            sales_incl_gst=money(profit_row["sales_incl_gst"] if profit_row else 0),
             best_buyer=best_buyer, best_product=best_product, best_biller=best_biller,
             top_products=top_products, top_billers=top_billers, top_buyers=top_buyers,
             today_row=today_row,
@@ -2230,4 +2641,5 @@ register_advanced(app, {
     "require_page": require_page,
     "default_gst_pct": default_gst_pct,
     "product_effective_gst": product_effective_gst,
+    "session_user_from_row": session_user_from_row,
 })

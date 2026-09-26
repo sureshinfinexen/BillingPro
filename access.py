@@ -66,7 +66,7 @@ DEFAULT_ADMIN_PAGES = ",".join(
 CORE_FEATURES = [f["key"] for f in FEATURE_CATALOG if f.get("core")]
 ALL_FEATURE_KEYS = [f["key"] for f in FEATURE_CATALOG]
 DEFAULT_NEW_SHOP_FEATURES = CORE_FEATURES + [
-    "holds", "returns", "day_close", "reports", "shifts", "reorder",
+    "holds", "returns", "day_close", "reports", "shifts", "reorder", "purchases",
 ]
 
 
@@ -120,22 +120,33 @@ def shop_has_feature(shop_features: set[str] | None, feature_key: str | None) ->
     return feature_key in shop_features
 
 
+def _role_default_pages(u) -> set[str]:
+    if is_store_admin(u):
+        return parse_csv(DEFAULT_ADMIN_PAGES)
+    return parse_csv(DEFAULT_CASHIER_PAGES)
+
+
 def user_pages(u) -> set[str]:
+    """Pages this user may open.
+
+    Blank / unset pages → role defaults (until Assign pages is saved).
+    Non-empty CSV → exactly those page keys.
+    """
     if not u:
         return set()
     if is_superadmin(u):
         return {p["key"] for p in PAGE_CATALOG}
-    raw = (u.get("pages") or "").strip()
-    if not raw:
-        raw = (u.get("permissions") or "").strip()
-        # Legacy permission tokens → ignore as pages if they look like old perms
-        if raw and any(x in raw for x in ("bills_view", "stock_view", "hold", "credit_view")):
-            raw = ""
-    if not raw:
-        if is_store_admin(u):
-            return parse_csv(DEFAULT_ADMIN_PAGES)
-        return parse_csv(DEFAULT_CASHIER_PAGES)
-    return parse_csv(raw)
+
+    raw = u.get("pages")
+    if raw is None or str(raw).strip() == "":
+        perm = (u.get("permissions") or "").strip()
+        # Legacy permission tokens are not page keys
+        if perm and not any(
+            x in perm for x in ("bills_view", "stock_view", "hold", "credit_view")
+        ):
+            return parse_csv(perm)
+        return _role_default_pages(u)
+    return parse_csv(str(raw))
 
 
 def _role_allows(u, meta: dict) -> bool:

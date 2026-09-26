@@ -74,6 +74,7 @@ async def ensure_shop_isolation_schema(db, ensure_column):
     await ensure_column(db, "customer", "shop_id", "INTEGER")
     await ensure_column(db, "coupon", "shop_id", "INTEGER")
     await ensure_column(db, "supplier", "shop_id", "INTEGER")
+    await ensure_column(db, "purchase_template", "shop_id", "INTEGER")
     await ensure_column(db, "return_note", "shop_id", "INTEGER")
     await ensure_column(db, "audit_log", "shop_id", "INTEGER")
     await ensure_column(db, "product_batch", "shop_id", "INTEGER")
@@ -84,7 +85,7 @@ async def ensure_shop_isolation_schema(db, ensure_column):
         for table in (
             "product", "staff", "bill", "counter", "customer", "coupon",
             "supplier", "warehouse", "purchase", "bill_hold", "day_close",
-            "return_note", "audit_log", "product_batch",
+            "return_note", "audit_log", "product_batch", "purchase_template",
         ):
             try:
                 await db.execute(

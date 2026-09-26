@@ -7,6 +7,17 @@ echo.
 echo Starting BillingPro...
 echo.
 
+REM Default HTTP :8003 (stable). For HTTPS camera: set BILLINGPRO_HTTPS=1
+if not defined BILLINGPRO_HTTPS set BILLINGPRO_HTTPS=0
+
+REM Free leftover uvicorn on common ports (ignore errors)
+for %%P in (8003 8443) do (
+  for /f "tokens=5" %%A in ('netstat -ano ^| findstr ":%%P" ^| findstr LISTENING') do (
+    echo Freeing port %%P PID %%A ...
+    taskkill /PID %%A /F >nul 2>&1
+  )
+)
+
 REM Try Python launcher, then python, then python3
 where py >nul 2>&1
 if %ERRORLEVEL%==0 (

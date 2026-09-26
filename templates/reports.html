@@ -6,7 +6,32 @@
   <div class="stat"><div class="lbl">{{ t('today_sales') }}</div><div class="val">₹{{ today_row.revenue|money }}</div></div>
   <div class="stat"><div class="lbl">{{ t('today_bills') }}</div><div class="val">{{ today_row.bills }}</div></div>
   <div class="stat"><div class="lbl">{{ t('total_revenue') }}</div><div class="val">₹{{ totals.revenue|money }}</div></div>
-  <div class="stat"><div class="lbl">{{ t('profit') }}</div><div class="val">₹{{ profit|money }}</div></div>
+  <div class="stat"><div class="lbl">{{ t('profit') }}</div><div class="val">₹{{ profit|money }}</div>
+    <div class="sub">{{ t('profit_short_formula') }}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:12px">
+  <div class="card-header"><h2>{{ t('profit_detail_title') }}</h2></div>
+  <div class="card-body" style="font-size:13px;line-height:1.55">
+    <p style="color:var(--text-secondary);margin-bottom:10px">{{ t('profit_formula_intro') }}</p>
+    <div class="stats" style="margin-bottom:10px">
+      <div class="stat"><div class="lbl">{{ t('sales_ex_gst') }}</div><div class="val" style="font-size:16px">₹{{ sales_ex_gst|money }}</div>
+        <div class="sub">{{ t('rate') }} × {{ t('quantity') }}</div></div>
+      <div class="stat"><div class="lbl">{{ t('cogs') }}</div><div class="val" style="font-size:16px">₹{{ cogs|money }}</div>
+        <div class="sub">{{ t('purchase_rate') }} × {{ t('quantity') }}</div></div>
+      <div class="stat"><div class="lbl">{{ t('profit') }}</div><div class="val" style="font-size:16px">₹{{ profit|money }}</div>
+        <div class="sub">{{ t('sales_ex_gst') }} − {{ t('cogs') }}</div></div>
+      <div class="stat"><div class="lbl">{{ t('gst_collected') }}</div><div class="val" style="font-size:16px">₹{{ gst_collected|money }}</div>
+        <div class="sub">{{ t('gst_not_profit') }}</div></div>
+    </div>
+    <ol style="margin:0 0 0 18px;padding:0;color:var(--text-secondary);font-size:12.5px">
+      <li style="margin-bottom:4px">{{ t('profit_step_1') }}</li>
+      <li style="margin-bottom:4px">{{ t('profit_step_2') }}</li>
+      <li style="margin-bottom:4px">{{ t('profit_step_3') }}</li>
+      <li style="margin-bottom:4px">{{ t('profit_step_4') }}</li>
+    </ol>
+  </div>
 </div>
 
 <div class="stats">

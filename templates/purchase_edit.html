@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ t('edit_purchase') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('edit_purchase') }} — {{ purchase.grn_no }}{% endblock %}
+{% block content %}
+{% if error %}<div class="alert alert-err">{{ t('generic_error') }} ({{ error }})</div>{% endif %}
+
+<div class="card" style="max-width:560px">
+  <div class="card-body">
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.4">
+      {{ t('edit_purchase_help') }}
+    </p>
+    <div style="font-size:13px;margin-bottom:12px">
+      <div><strong>GRN:</strong> {{ purchase.grn_no }} · {{ purchase.purchase_date }}</div>
+      <div><strong>{{ t('products') }}:</strong> {{ item.sku }} — {{ d(item.name) }}</div>
+    </div>
+    <form method="post" action="/purchases/{{ purchase.id }}/edit" id="editGrn">
+      <div class="form-group">
+        <label class="form-label">{{ t('supplier') }}</label>
+        <select class="form-control" name="supplier_id">
+          <option value="">{{ t('select') }}</option>
+          {% for s in suppliers %}
+          <option value="{{ s.id }}" {% if purchase.supplier_id==s.id %}selected{% endif %}>{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label class="form-label">{{ t('quantity') }} *</label>
+          <input class="form-control" type="number" step="0.01" min="0.01" name="qty" id="qty" required value="{{ item.qty }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ t('purchase_rate') }} *</label>
+          <input class="form-control" type="number" step="0.01" min="0" name="cost" id="cost" required value="{{ item.cost }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ t('gst') }} %</label>
+          <input class="form-control" type="number" step="0.01" min="0" name="gst_pct" id="gst_pct" value="{{ item.gst_pct or 0 }}">
+        </div>
+      </div>
+      <div id="grn-preview" style="font-size:12.5px;background:color-mix(in srgb,var(--primary-light) 45%,transparent);border-radius:8px;padding:8px 10px;margin-bottom:10px">
+        {{ t('purchase_preview') }}: <strong id="pv-sub">₹0.00</strong> + {{ t('gst') }} <strong id="pv-tax">₹0.00</strong>
+        = <strong id="pv-tot">₹0.00</strong>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">{{ t('batch_no') }}</label>
+          <input class="form-control" name="batch_no" value="{{ item.batch_no or '' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ t('expiry') }}</label>
+          <input class="form-control" type="date" name="expiry" value="{{ item.expiry or '' }}">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+        <a href="/purchases" class="btn btn-outline">{{ t('cancel') }}</a>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function(){
+  const qty=document.getElementById('qty'), cost=document.getElementById('cost'), gst=document.getElementById('gst_pct');
+  function money(n){ return '₹'+(Math.round((Number(n)||0)*100)/100).toFixed(2); }
+  function preview(){
+    const q=Number(qty.value)||0, c=Number(cost.value)||0, g=Number(gst.value)||0;
+    const sub=q*c, tax=sub*g/100;
+    document.getElementById('pv-sub').textContent=money(sub);
+    document.getElementById('pv-tax').textContent=money(tax);
+    document.getElementById('pv-tot').textContent=money(sub+tax);
+  }
+  [qty,cost,gst].forEach(el=>el.addEventListener('input', preview));
+  preview();
+})();
+</script>
+{% endblock %}

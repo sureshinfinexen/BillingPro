@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}{% if tpl %}{{ t('edit_template') }}{% else %}{{ t('new_template') }}{% endif %} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{% if tpl %}{{ t('edit_template') }}{% else %}{{ t('new_template') }}{% endif %}{% endblock %}
+{% block content %}
+{% if saved %}<div class="alert alert-ok">{{ t('saved_ok') }}{% if saved.startswith('uploaded') %} ({{ saved }}){% endif %}</div>{% endif %}
+{% if error %}<div class="alert alert-err">{{ t('generic_error') }} ({{ error }})</div>{% endif %}
+
+<div class="search-bar no-print">
+  <a href="/purchase-templates" class="btn btn-outline">← {{ t('purchase_templates') }}</a>
+  {% if tpl %}
+  <form method="post" action="/purchase-templates/{{ tpl.id }}/receive" style="display:inline"
+        onsubmit="return confirm({{ t('confirm_receive_template')|tojson }})">
+    <button type="submit" class="btn btn-primary">{{ t('receive_template_stock') }}</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card" style="max-width:720px;margin-bottom:14px">
+  <div class="card-header"><h2>{{ t('template_details') }}</h2></div>
+  <div class="card-body">
+    <form method="post" action="{% if tpl %}/purchase-templates/{{ tpl.id }}/edit{% else %}/purchase-templates/new{% endif %}" id="tplHeader">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">{{ t('template_name') }} *</label>
+          <input class="form-control" name="name" required
+                 value="{{ tpl.name if tpl else '' }}"
+                 placeholder="{{ t('template_name_ph') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ t('supplier') }}</label>
+          <select class="form-control" name="supplier_id">
+            <option value="">{{ t('select') }}</option>
+            {% for s in suppliers %}
+            <option value="{{ s.id }}" {% if tpl and tpl.supplier_id==s.id %}selected{% endif %}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">{{ t('notes') }}</label>
+        <input class="form-control" name="notes" value="{{ tpl.notes if tpl and tpl.notes else '' }}">
+      </div>
+
+      {% if tpl and items %}
+      <div class="table-scroll" style="margin:10px 0">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ t('sku') }}</th>
+              <th>{{ t('name') }}</th>
+              <th class="num">{{ t('quantity') }}</th>
+              <th class="num">{{ t('purchase_rate') }}</th>
+              <th class="num">{{ t('gst') }} %</th>
+              <th class="act"></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for it in items %}
+          <tr>
+            <td><code>{{ it.sku }}</code><input type="hidden" name="item_id" value="{{ it.id }}"></td>
+            <td>{{ d(it.name) }}</td>
+            <td class="num"><input class="form-control" type="number" step="0.01" min="0.01" name="qty" value="{{ it.qty }}" style="width:90px;margin-left:auto"></td>
+            <td class="num"><input class="form-control" type="number" step="0.01" min="0" name="cost" value="{{ it.cost }}" style="width:100px;margin-left:auto"></td>
+            <td class="num"><input class="form-control" type="number" step="0.01" min="0" name="gst_pct" value="{{ it.gst_pct or 0 }}" style="width:80px;margin-left:auto"></td>
+            <td class="act">
+              <button type="submit" formaction="/purchase-templates/{{ tpl.id }}/items/{{ it.id }}/delete"
+                      formmethod="post" class="btn btn-sm btn-danger"
+                      onclick="return confirm({{ t('confirm_delete')|tojson }})">{{ t('remove') }}</button>
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% elif tpl %}
+      <p style="font-size:13px;color:var(--text-secondary);margin:8px 0">{{ t('template_add_products_hint') }}</p>
+      {% endif %}
+
+      <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+    </form>
+  </div>
+</div>
+
+{% if tpl %}
+<div class="card" style="max-width:720px;margin-bottom:14px">
+  <div class="card-header"><h2>{{ t('upload_template_excel') }}</h2></div>
+  <div class="card-body">
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;line-height:1.4">{{ t('template_excel_hint') }}</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <a href="/purchase-templates/{{ tpl.id }}/excel-template" class="btn btn-outline btn-sm">⬇ {{ t('download_excel_template') }}</a>
+      <a href="/purchase-templates/{{ tpl.id }}/excel-template?format=csv" class="btn btn-outline btn-sm">⬇ {{ t('download_sample_csv') }}</a>
+    </div>
+    <form method="post" action="/purchase-templates/{{ tpl.id }}/upload" enctype="multipart/form-data"
+          style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="file" name="file" accept=".xlsx,.xlsm,.csv" required class="form-control" style="max-width:320px">
+      <button class="btn btn-primary" type="submit">{{ t('upload') }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="max-width:720px">
+  <div class="card-header"><h2>{{ t('add_product_to_template') }}</h2></div>
+  <div class="card-body">
+    <form method="post" action="/purchase-templates/{{ tpl.id }}/items/add">
+      <div class="form-group">
+        <label class="form-label">{{ t('products') }} *</label>
+        <select class="form-control" name="product_id" id="tpl_product" required>
+          <option value="">{{ t('select') }}</option>
+          {% for p in products %}
+          <option value="{{ p.id }}"
+                  data-cost="{{ p.cost or 0 }}"
+                  data-gst="{{ p.gst_pct if (p.gst_override|default(0)|int)==1 else (default_gst if default_gst is defined else p.gst_pct or 18) }}">
+            {{ p.sku }} — {{ d(p.name) }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label class="form-label">{{ t('quantity') }}</label>
+          <input class="form-control" type="number" step="0.01" min="0.01" name="qty" value="1" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ t('purchase_rate') }}</label>
+          <input class="form-control" type="number" step="0.01" min="0" name="cost" id="tpl_cost" value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ t('gst') }} %</label>
+          <input class="form-control" type="number" step="0.01" min="0" name="gst_pct" id="tpl_gst" value="{{ default_gst if default_gst is defined else 18 }}">
+        </div>
+      </div>
+      <button class="btn btn-primary" type="submit">{{ t('add') }}</button>
+    </form>
+  </div>
+</div>
+<script>
+(function(){
+  const sel=document.getElementById('tpl_product');
+  const cost=document.getElementById('tpl_cost');
+  const gst=document.getElementById('tpl_gst');
+  if(!sel) return;
+  sel.addEventListener('change',()=>{
+    const o=sel.selectedOptions[0];
+    if(!o||!o.value) return;
+    if(o.dataset.cost) cost.value=Number(o.dataset.cost)||0;
+    if(o.dataset.gst) gst.value=Number(o.dataset.gst)||0;
+  });
+})();
+</script>
+{% else %}
+<div class="alert alert-ok" style="max-width:720px">{{ t('template_save_first') }}</div>
+{% endif %}
+{% endblock %}

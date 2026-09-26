@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ t('purchase_templates') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('purchase_templates') }}{% endblock %}
+{% block content %}
+{% if saved %}<div class="alert alert-ok">{{ t('saved_ok') }}{% if saved.startswith('deleted') %} ({{ saved }}){% endif %}</div>{% endif %}
+
+<div class="card" style="margin-bottom:12px">
+  <div class="card-body" style="font-size:13px;line-height:1.45;color:var(--text-secondary)">
+    {{ t('purchase_templates_help') }}
+  </div>
+</div>
+
+<div class="search-bar no-print">
+  <a href="/purchase-templates/new" class="btn btn-primary">+ {{ t('new_template') }}</a>
+  <a href="/purchases" class="btn btn-outline">{{ t('purchases') }}</a>
+  <a href="/suppliers" class="btn btn-outline">{{ t('suppliers') }}</a>
+  <a href="/products" class="btn btn-outline">{{ t('products') }}</a>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding:0">
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>{{ t('name') }}</th>
+          <th>{{ t('supplier') }}</th>
+          <th class="num">{{ t('products') }}</th>
+          <th class="act no-print">{{ t('actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for trow in templates_list %}
+      <tr>
+        <td><strong>{{ trow.name }}</strong></td>
+        <td>{{ trow.supplier_name or '—' }}</td>
+        <td class="num">{{ trow.item_count or 0 }}</td>
+        <td class="act no-print">
+          <a href="/purchase-templates/{{ trow.id }}/edit" class="btn btn-sm btn-outline">{{ t('edit') }}</a>
+          <form method="post" action="/purchase-templates/{{ trow.id }}/receive" style="display:inline"
+                onsubmit="return confirm({{ t('confirm_receive_template')|tojson }})">
+            <button type="submit" class="btn btn-sm btn-primary">{{ t('receive_template_stock') }}</button>
+          </form>
+          <form method="post" action="/purchase-templates/{{ trow.id }}/delete" style="display:inline"
+                onsubmit="return confirm({{ t('confirm_delete')|tojson }})">
+            <button type="submit" class="btn btn-sm btn-danger">{{ t('delete') }}</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_templates_yet') }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

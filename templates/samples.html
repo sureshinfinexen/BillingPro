@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ t('sample_templates') }} · {{ APP_NAME }}{% endblock %}
+{% block page_title %}{{ t('sample_templates') }}{% endblock %}
+{% block content %}
+{% if saved %}
+<div class="alert alert-ok">
+  {{ t('demo_pack_loaded') }}
+  {% if demo_counts %}
+  <span style="font-size:12px;opacity:.85"> — {{ demo_counts }}</span>
+  {% endif %}
+</div>
+{% endif %}
+{% if error %}<div class="alert alert-err">{{ error }}</div>{% endif %}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-body">
+    <p style="margin:0 0 10px;font-size:14px;line-height:1.45">{{ t('sample_templates_help') }}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <a class="btn btn-outline" href="/samples/zip">⬇ {{ t('download_all_samples_zip') }}</a>
+      {% if is_admin %}
+      <form method="post" action="/samples/load-demo" style="display:inline"
+            onsubmit="return confirm('{{ t('demo_pack_confirm') }}');">
+        <button class="btn btn-primary" type="submit">⚡ {{ t('load_demo_pack') }}</button>
+      </form>
+      {% endif %}
+      <a class="btn btn-outline" href="/help">{{ t('help_guide') }}</a>
+    </div>
+    <p style="margin:10px 0 0;font-size:12px;color:var(--text-secondary)">{{ t('sample_upload_order') }}</p>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-header"><h2>{{ t('download_sample_csv') }} / Excel</h2></div>
+  <div class="card-body" style="padding:0">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>{{ t('name') }}</th>
+          <th>{{ t('notes') }}</th>
+          <th class="act">{{ t('actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for s in samples %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><strong>{{ s.title }}</strong><div style="font-size:11px;color:var(--text-secondary)">{{ s.filename }}</div></td>
+        <td style="font-size:13px">{{ s.desc }}</td>
+        <td class="act" style="white-space:nowrap">
+          <a class="btn btn-outline btn-sm" href="/samples/download/{{ s.key }}">CSV</a>
+          {% if s.also_xlsx %}<a class="btn btn-outline btn-sm" href="/samples/download/{{ s.key }}?format=xlsx">Excel</a>{% endif %}
+          {% if s.page %}<a class="btn btn-outline btn-sm" href="{{ s.page }}">→</a>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if is_admin %}
+<div class="card" style="margin-bottom:14px">
+  <div class="card-header"><h2>{{ t('upload') }} CSV (extra masters)</h2></div>
+  <div class="card-body">
+    <div class="form-row" style="align-items:flex-end;flex-wrap:wrap;gap:16px">
+      <form method="post" action="/samples/upload/suppliers" enctype="multipart/form-data" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div>
+          <label class="form-label">{{ t('suppliers') }}</label>
+          <input type="file" name="file" accept=".csv" required class="form-control" style="max-width:220px">
+        </div>
+        <button class="btn btn-outline" type="submit">{{ t('upload') }}</button>
+      </form>
+      <form method="post" action="/samples/upload/coupons" enctype="multipart/form-data" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div>
+          <label class="form-label">{{ t('coupons') }}</label>
+          <input type="file" name="file" accept=".csv" required class="form-control" style="max-width:220px">
+        </div>
+        <button class="btn btn-outline" type="submit">{{ t('upload') }}</button>
+      </form>
+      <form method="post" action="/samples/upload/customers" enctype="multipart/form-data" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div>
+          <label class="form-label">{{ t('customers') }}</label>
+          <input type="file" name="file" accept=".csv" required class="form-control" style="max-width:220px">
+        </div>
+        <button class="btn btn-outline" type="submit">{{ t('upload') }}</button>
+      </form>
+      <form method="post" action="/samples/upload/warehouses" enctype="multipart/form-data" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div>
+          <label class="form-label">{{ t('warehouses') }}</label>
+          <input type="file" name="file" accept=".csv" required class="form-control" style="max-width:220px">
+        </div>
+        <button class="btn btn-outline" type="submit">{{ t('upload') }}</button>
+      </form>
+    </div>
+    <p style="margin-top:10px;font-size:12px;color:var(--text-secondary)">
+      Products → use Products page upload. GRN → Purchases page. Template lines → Supplier template edit page.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header"><h2>{{ t('demo_logins') }}</h2></div>
+  <div class="card-body" style="font-size:14px">
+    <ul>
+      <li><code>demo_cash_a</code> / <code>pass123</code> — Counter 1</li>
+      <li><code>demo_cash_b</code> / <code>pass123</code> — Counter 2</li>
+      <li>Test bill with mobile <code>9000001001</code> (loyalty points) and coupon <code>FLAT10</code></li>
+      <li>Sample product SKUs: <strong>101–112</strong></li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

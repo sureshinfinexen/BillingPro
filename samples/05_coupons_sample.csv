@@ -1,0 +1,4 @@
+﻿code,discount_pct,discount_amt,min_bill
+WELCOME50,0,50,499
+FLAT10,10,0,200
+SAVE20,0,20,150

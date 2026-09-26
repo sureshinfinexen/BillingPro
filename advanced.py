@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable
 from urllib.parse import quote
 
-from fastapi import Form, Request
+from fastapi import File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from markupsafe import Markup
 
@@ -78,9 +78,29 @@ async def ensure_advanced_schema(db):
         name TEXT,
         qty REAL NOT NULL,
         cost REAL NOT NULL DEFAULT 0,
+        gst_pct REAL NOT NULL DEFAULT 0,
         batch_no TEXT DEFAULT '',
         expiry TEXT DEFAULT '',
         line_total REAL NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS purchase_template (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        supplier_id INTEGER REFERENCES supplier(id),
+        shop_id INTEGER REFERENCES shop(id),
+        notes TEXT DEFAULT '',
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS purchase_template_item (
+        id SERIAL PRIMARY KEY,
+        template_id INTEGER NOT NULL REFERENCES purchase_template(id) ON DELETE CASCADE,
+        product_id INTEGER REFERENCES product(id),
+        sku TEXT,
+        name TEXT,
+        qty REAL NOT NULL DEFAULT 1,
+        cost REAL NOT NULL DEFAULT 0,
+        gst_pct REAL NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS product_batch (
         id SERIAL PRIMARY KEY,
@@ -205,6 +225,7 @@ async def ensure_advanced_schema(db):
     await ensure_column(db, "product", "track_batch", "INTEGER DEFAULT 0")
     await ensure_column(db, "product", "reorder_level", "REAL DEFAULT 5")
     await ensure_column(db, "product", "shop_id", "INTEGER")
+    await ensure_column(db, "purchase_item", "gst_pct", "REAL DEFAULT 0")
     await ensure_column(db, "customer", "loyalty_points", "REAL DEFAULT 0")
     await ensure_column(db, "customer", "credit_limit", "REAL DEFAULT 0")
     await ensure_column(db, "staff", "shop_id", "INTEGER")
@@ -298,8 +319,53 @@ def can(u, perm: str, shop_features=None) -> bool:
     return access_can(u, perm, shop_features)
 
 
+def _template_row_get(row: dict, *keys):
+    for k in keys:
+        if k in row and row[k] is not None and str(row[k]).strip() != "":
+            return str(row[k]).strip()
+        for rk, rv in (row or {}).items():
+            if rk and str(rk).strip().lower() == k.lower() and rv is not None and str(rv).strip() != "":
+                return str(rv).strip()
+    return ""
+
+
+def _parse_template_upload(raw: bytes, filename: str) -> list[dict]:
+    """Parse CSV or Excel (.xlsx) into list of dict rows."""
+    name = (filename or "").lower()
+    rows: list[dict] = []
+    if name.endswith(".xlsx") or name.endswith(".xlsm"):
+        try:
+            from openpyxl import load_workbook
+        except ImportError as e:
+            raise RuntimeError("Install openpyxl for Excel upload: pip install openpyxl") from e
+        wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        ws = wb.active
+        data = list(ws.iter_rows(values_only=True))
+        wb.close()
+        if not data:
+            return []
+        headers = [str(h or "").strip() for h in data[0]]
+        for line in data[1:]:
+            if not line or all(c is None or str(c).strip() == "" for c in line):
+                continue
+            row = {}
+            for i, h in enumerate(headers):
+                if not h:
+                    continue
+                row[h] = line[i] if i < len(line) else None
+            rows.append(row)
+        return rows
+
+    # CSV (Excel can Save As CSV)
+    text = raw.decode("utf-8-sig", errors="replace")
+    reader = csv.DictReader(io.StringIO(text))
+    for row in reader:
+        rows.append(dict(row))
+    return rows
+
+
 def _next_no(prefix: str) -> str:
-    return f"{prefix}-{date.today().strftime('%Y%m%d')}-{datetime.now().strftime('%H%M%S')}"
+    return f"{prefix}-{date.today().strftime('%Y%m%d')}-{datetime.now().strftime('%H%M%S%f')}"
 
 
 def register_advanced(app, deps: dict):
@@ -607,8 +673,507 @@ def register_advanced(app, deps: dict):
         return RedirectResponse("/coupons?saved=1", 303)
 
     # ═══════════════════════════════════════════════════════════
-    # PURCHASE / GRN
+    # SUPPLIERS + PURCHASE / GRN
     # ═══════════════════════════════════════════════════════════
+    @app.get("/suppliers", response_class=HTMLResponse)
+    async def suppliers_page(request: Request):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        async with await get_conn() as db:
+            sh, sp = sql_shop(u)
+            rows = await db.fetchall(
+                f"SELECT * FROM supplier WHERE 1=1{sh} ORDER BY active DESC, name", sp
+            )
+        return templates.TemplateResponse(
+            "suppliers.html",
+            tctx(
+                request, user=u, suppliers=rows, active="suppliers",
+                saved=request.query_params.get("saved"),
+            ),
+        )
+
+    @app.post("/suppliers")
+    async def supplier_create(
+        request: Request,
+        name: str = Form(...),
+        mobile: str = Form(""),
+        gstin: str = Form(""),
+    ):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        name = (name or "").strip()
+        if not name:
+            return RedirectResponse("/suppliers?error=name", 303)
+        async with await get_conn() as db:
+            await db.execute(
+                "INSERT INTO supplier (name,mobile,gstin,shop_id,active) VALUES (?,?,?,?,1)",
+                (name, mobile.strip(), gstin.strip().upper(), require_shop_id(u)),
+            )
+            await db.commit()
+        return RedirectResponse("/suppliers?saved=1", 303)
+
+    @app.post("/suppliers/{sid}/toggle")
+    async def supplier_toggle(request: Request, sid: int):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        async with await get_conn() as db:
+            if not await assert_same_shop(db, u, "supplier", sid):
+                return RedirectResponse("/suppliers?error=shop", 303)
+            await db.execute(
+                "UPDATE supplier SET active = CASE WHEN active=1 THEN 0 ELSE 1 END WHERE id=?",
+                (sid,),
+            )
+            await db.commit()
+        return RedirectResponse("/suppliers?saved=1", 303)
+
+    # ── Purchase templates (reusable monthly stock lists) ──
+    @app.get("/purchase-templates", response_class=HTMLResponse)
+    async def purchase_templates_list(request: Request):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        async with await get_conn() as db:
+            sh, sp = sql_shop(u)
+            st, stp = sql_shop_prefixed(u, "t")
+            rows = await db.fetchall(
+                f"""SELECT t.*, s.name AS supplier_name,
+                          (SELECT COUNT(*) FROM purchase_template_item i WHERE i.template_id=t.id) AS item_count
+                   FROM purchase_template t
+                   LEFT JOIN supplier s ON s.id=t.supplier_id
+                   WHERE COALESCE(t.active,1)=1{st}
+                   ORDER BY t.id DESC""",
+                stp,
+            )
+        return templates.TemplateResponse(
+            "purchase_templates.html",
+            tctx(
+                request, user=u, templates_list=rows, active="purchase_templates",
+                saved=request.query_params.get("saved"),
+            ),
+        )
+
+    @app.get("/purchase-templates/new", response_class=HTMLResponse)
+    async def purchase_template_new_get(request: Request):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        async with await get_conn() as db:
+            sh, sp = sql_shop(u)
+            suppliers = await db.fetchall(
+                f"SELECT * FROM supplier WHERE active=1{sh} ORDER BY name", sp
+            )
+        return templates.TemplateResponse(
+            "purchase_template_form.html",
+            tctx(
+                request, user=u, tpl=None, items=[], suppliers=suppliers,
+                products=[], active="purchase_templates",
+                default_gst=default_gst_pct(),
+            ),
+        )
+
+    @app.post("/purchase-templates/new")
+    async def purchase_template_new_post(
+        request: Request,
+        name: str = Form(...),
+        supplier_id: str = Form(""),
+        notes: str = Form(""),
+    ):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        name = (name or "").strip()
+        if not name:
+            return RedirectResponse("/purchase-templates/new?error=name", 303)
+        sid = int(supplier_id) if str(supplier_id).strip().isdigit() else None
+        async with await get_conn() as db:
+            await db.execute(
+                """INSERT INTO purchase_template (name,supplier_id,shop_id,notes,active)
+                   VALUES (?,?,?,?,1)""",
+                (name, sid, require_shop_id(u), (notes or "").strip()),
+            )
+            tid = await db.lastrowid()
+            await db.commit()
+        return RedirectResponse(f"/purchase-templates/{tid}/edit?saved=1", 303)
+
+    @app.get("/purchase-templates/{tid}/edit", response_class=HTMLResponse)
+    async def purchase_template_edit_get(request: Request, tid: int):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        async with await get_conn() as db:
+            if not await assert_same_shop(db, u, "purchase_template", tid):
+                return RedirectResponse("/purchase-templates?error=shop", 303)
+            sh, sp = sql_shop(u)
+            tpl = await db.fetchone("SELECT * FROM purchase_template WHERE id=?", (tid,))
+            items = await db.fetchall(
+                """SELECT i.*, p.stock AS product_stock
+                   FROM purchase_template_item i
+                   LEFT JOIN product p ON p.id=i.product_id
+                   WHERE i.template_id=? ORDER BY i.id""",
+                (tid,),
+            )
+            suppliers = await db.fetchall(
+                f"SELECT * FROM supplier WHERE active=1{sh} ORDER BY name", sp
+            )
+            products = await db.fetchall(
+                f"""SELECT id,sku,name,cost,gst_pct,gst_override FROM product
+                   WHERE active=1{sh} ORDER BY name LIMIT 500""",
+                sp,
+            )
+        if not tpl:
+            return RedirectResponse("/purchase-templates?error=not_found", 303)
+        return templates.TemplateResponse(
+            "purchase_template_form.html",
+            tctx(
+                request, user=u, tpl=tpl, items=items, suppliers=suppliers,
+                products=products, active="purchase_templates",
+                default_gst=default_gst_pct(),
+                saved=request.query_params.get("saved"),
+                error=request.query_params.get("error"),
+            ),
+        )
+
+    @app.post("/purchase-templates/{tid}/edit")
+    async def purchase_template_edit_post(
+        request: Request, tid: int,
+        name: str = Form(...),
+        supplier_id: str = Form(""),
+        notes: str = Form(""),
+    ):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        form = await request.form()
+        name = (name or "").strip()
+        sid = int(supplier_id) if str(supplier_id).strip().isdigit() else None
+        async with await get_conn() as db:
+            if not await assert_same_shop(db, u, "purchase_template", tid):
+                return RedirectResponse("/purchase-templates?error=shop", 303)
+            await db.execute(
+                "UPDATE purchase_template SET name=?, supplier_id=?, notes=? WHERE id=?",
+                (name, sid, (notes or "").strip(), tid),
+            )
+            # Update existing line qtys/costs/gst from item_id[], qty[], cost[], gst_pct[]
+            item_ids = form.getlist("item_id")
+            qtys = form.getlist("qty")
+            costs = form.getlist("cost")
+            gsts = form.getlist("gst_pct")
+            for i, iid in enumerate(item_ids):
+                if not str(iid).isdigit():
+                    continue
+                q = money(qtys[i] if i < len(qtys) else 0)
+                c = money(costs[i] if i < len(costs) else 0)
+                g = money(gsts[i] if i < len(gsts) else 0)
+                if q <= 0:
+                    continue
+                await db.execute(
+                    "UPDATE purchase_template_item SET qty=?, cost=?, gst_pct=? WHERE id=? AND template_id=?",
+                    (q, c, g, int(iid), tid),
+                )
+            await db.commit()
+        return RedirectResponse(f"/purchase-templates/{tid}/edit?saved=1", 303)
+
+    @app.post("/purchase-templates/{tid}/items/add")
+    async def purchase_template_item_add(
+        request: Request, tid: int,
+        product_id: str = Form(...),
+        qty: str = Form("1"),
+        cost: str = Form(""),
+        gst_pct: str = Form(""),
+    ):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        async with await get_conn() as db:
+            if not await assert_same_shop(db, u, "purchase_template", tid):
+                return RedirectResponse("/purchase-templates?error=shop", 303)
+            sh, sp = sql_shop(u)
+            if not str(product_id).strip().isdigit():
+                return RedirectResponse(f"/purchase-templates/{tid}/edit?error=product", 303)
+            prod = await db.fetchone(
+                f"SELECT * FROM product WHERE id=? AND active=1{sh}",
+                (int(product_id), *sp),
+            )
+            if not prod:
+                return RedirectResponse(f"/purchase-templates/{tid}/edit?error=product", 303)
+            existing = await db.fetchone(
+                "SELECT id FROM purchase_template_item WHERE template_id=? AND product_id=?",
+                (tid, int(product_id)),
+            )
+            q = money(qty) or 1
+            if str(cost).strip() != "":
+                c = money(cost)
+            else:
+                c = money(prod.get("cost") or 0)
+            if str(gst_pct).strip() != "":
+                g = money(gst_pct)
+            else:
+                g = product_effective_gst(prod)
+            if existing:
+                await db.execute(
+                    "UPDATE purchase_template_item SET qty=?, cost=?, gst_pct=?, sku=?, name=? WHERE id=?",
+                    (q, c, g, prod["sku"], prod["name"], existing["id"]),
+                )
+            else:
+                await db.execute(
+                    """INSERT INTO purchase_template_item
+                       (template_id,product_id,sku,name,qty,cost,gst_pct)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (tid, prod["id"], prod["sku"], prod["name"], q, c, g),
+                )
+            await db.commit()
+        return RedirectResponse(f"/purchase-templates/{tid}/edit?saved=1", 303)
+
+    @app.get("/purchase-templates/{tid}/excel-template")
+    async def purchase_template_excel_template(request: Request, tid: int):
+        """Download Excel/CSV sample for template product lines."""
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        async with await get_conn() as db:
+            if not await assert_same_shop(db, u, "purchase_template", tid):
+                return RedirectResponse("/purchase-templates?error=shop", 303)
+        fmt = (request.query_params.get("format") or "xlsx").lower()
+        headers = ["sku", "qty", "cost", "gst_pct"]
+        from sample_pack import TEMPLATE_LINES
+        sample = [[t["sku"], t["qty"], t["cost"], t["gst_pct"]] for t in TEMPLATE_LINES]
+        if fmt == "csv":
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(headers)
+            w.writerows(sample)
+            data = buf.getvalue().encode("utf-8-sig")
+            return StreamingResponse(
+                io.BytesIO(data),
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=supplier_template_products.csv"},
+            )
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(headers)
+            w.writerows(sample)
+            data = buf.getvalue().encode("utf-8-sig")
+            return StreamingResponse(
+                io.BytesIO(data),
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=supplier_template_products.csv"},
+            )
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Products"
+        ws.append(headers)
+        for r in sample:
+            ws.append(r)
+        ws2 = wb.create_sheet("Instructions")
+        ws2.append(["sku", "Product code (must exist in Products), e.g. 001"])
+        ws2.append(["qty", "Quantity to receive each time"])
+        ws2.append(["cost", "Purchase rate before GST"])
+        ws2.append(["gst_pct", "GST % on purchase (optional)"])
+        ws2.append(["", "Upload this file on the template page to add/update products."])
+        out = io.BytesIO()
+        wb.save(out)
+        out.seek(0)
+        return StreamingResponse(
+            out,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=supplier_template_products.xlsx"},
+        )
+
+    @app.post("/purchase-templates/{tid}/upload")
+    async def purchase_template_upload(
+        request: Request, tid: int,
+        file: UploadFile = File(...),
+    ):
+        """Add/update template products from Excel (.xlsx) or CSV."""
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        raw = await file.read()
+        try:
+            rows = _parse_template_upload(raw, file.filename or "")
+        except Exception as exc:
+            return RedirectResponse(
+                f"/purchase-templates/{tid}/edit?error=upload-{quote(str(exc)[:80])}",
+                303,
+            )
+        if not rows:
+            return RedirectResponse(f"/purchase-templates/{tid}/edit?error=csv", 303)
+
+        n = 0
+        skipped = 0
+        async with await get_conn() as db:
+            if not await assert_same_shop(db, u, "purchase_template", tid):
+                return RedirectResponse("/purchase-templates?error=shop", 303)
+            sh, sp = sql_shop(u)
+            for row in rows:
+                sku = _template_row_get(row, "sku", "SKU", "code")
+                if sku and not sku.isdigit():
+                    sku = sku.upper()
+                qty = money(_template_row_get(row, "qty", "quantity", "Qty") or 0)
+                if not sku or qty <= 0:
+                    skipped += 1
+                    continue
+                prod = await db.fetchone(
+                    f"SELECT * FROM product WHERE active=1 AND sku=?{sh}",
+                    (sku, *sp),
+                )
+                if not prod and sku.isdigit():
+                    prod = await db.fetchone(
+                        f"""SELECT * FROM product WHERE active=1{sh}
+                           AND TRIM(sku) ~ '^[0-9]+$'
+                           AND CAST(TRIM(sku) AS INTEGER)=?
+                           ORDER BY LENGTH(TRIM(sku)) DESC LIMIT 1""",
+                        (*sp, int(sku)),
+                    )
+                if not prod:
+                    skipped += 1
+                    continue
+                cost_raw = _template_row_get(row, "cost", "rate", "purchase_rate", "price")
+                c = money(cost_raw) if cost_raw != "" else money(prod.get("cost") or 0)
+                gst_raw = _template_row_get(row, "gst_pct", "gst", "GST")
+                g = money(gst_raw) if gst_raw != "" else product_effective_gst(prod)
+                existing = await db.fetchone(
+                    "SELECT id FROM purchase_template_item WHERE template_id=? AND product_id=?",
+                    (tid, int(prod["id"])),
+                )
+                if existing:
+                    await db.execute(
+                        """UPDATE purchase_template_item
+                           SET qty=?, cost=?, gst_pct=?, sku=?, name=? WHERE id=?""",
+                        (qty, c, g, prod["sku"], prod["name"], existing["id"]),
+                    )
+                else:
+                    await db.execute(
+                        """INSERT INTO purchase_template_item
+                           (template_id,product_id,sku,name,qty,cost,gst_pct)
+                           VALUES (?,?,?,?,?,?,?)""",
+                        (tid, prod["id"], prod["sku"], prod["name"], qty, c, g),
+                    )
+                n += 1
+            await db.commit()
+        return RedirectResponse(
+            f"/purchase-templates/{tid}/edit?saved=uploaded-{n}-skip-{skipped}",
+            303,
+        )
+
+    @app.post("/purchase-templates/{tid}/items/{iid}/delete")
+    async def purchase_template_item_delete(request: Request, tid: int, iid: int):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        async with await get_conn() as db:
+            if not await assert_same_shop(db, u, "purchase_template", tid):
+                return RedirectResponse("/purchase-templates?error=shop", 303)
+            await db.execute(
+                "DELETE FROM purchase_template_item WHERE id=? AND template_id=?",
+                (iid, tid),
+            )
+            await db.commit()
+        return RedirectResponse(f"/purchase-templates/{tid}/edit?saved=1", 303)
+
+    @app.post("/purchase-templates/{tid}/delete")
+    async def purchase_template_delete(request: Request, tid: int):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        async with await get_conn() as db:
+            if not await assert_same_shop(db, u, "purchase_template", tid):
+                return RedirectResponse("/purchase-templates?error=shop", 303)
+            await db.execute("UPDATE purchase_template SET active=0 WHERE id=?", (tid,))
+            await db.commit()
+        return RedirectResponse("/purchase-templates?saved=deleted", 303)
+
+    @app.post("/purchase-templates/{tid}/receive")
+    async def purchase_template_receive(
+        request: Request, tid: int,
+        warehouse_id: str = Form(""),
+    ):
+        """Create GRN lines from template and add stock (reuse monthly order)."""
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        async with await get_conn() as db:
+            if not await assert_same_shop(db, u, "purchase_template", tid):
+                return RedirectResponse("/purchase-templates?error=shop", 303)
+            sh, sp = sql_shop(u)
+            tpl = await db.fetchone("SELECT * FROM purchase_template WHERE id=?", (tid,))
+            items = await db.fetchall(
+                "SELECT * FROM purchase_template_item WHERE template_id=? ORDER BY id",
+                (tid,),
+            )
+            if not tpl or not items:
+                return RedirectResponse(f"/purchase-templates/{tid}/edit?error=empty", 303)
+            shop_sid = require_shop_id(u)
+            wid = int(warehouse_id) if str(warehouse_id).strip().isdigit() else None
+            if not wid:
+                wh = await db.fetchone(
+                    f"SELECT id FROM warehouse WHERE active=1{sh} ORDER BY id LIMIT 1", sp
+                )
+                wid = wh["id"] if wh else None
+            subtotal = tax = 0.0
+            prepared = []
+            for it in items:
+                q = money(it.get("qty") or 0)
+                c = money(it.get("cost") or 0)
+                g = money(it.get("gst_pct") or 0)
+                if q <= 0 or not it.get("product_id"):
+                    continue
+                prod = await db.fetchone(
+                    f"SELECT * FROM product WHERE id=? AND active=1{sh}",
+                    (int(it["product_id"]), *sp),
+                )
+                if not prod:
+                    continue
+                line_sub = money(q * c)
+                line_tax = money(line_sub * g / 100.0)
+                subtotal = money(subtotal + line_sub)
+                tax = money(tax + line_tax)
+                prepared.append((prod, q, c, g, money(line_sub + line_tax)))
+            if not prepared:
+                return RedirectResponse(f"/purchase-templates/{tid}/edit?error=empty", 303)
+            total = money(subtotal + tax)
+            grn = _next_no("GRN")
+            await db.execute(
+                """INSERT INTO purchase
+                   (grn_no,purchase_date,supplier_id,warehouse_id,staff_id,shop_id,subtotal,tax,total,notes)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    grn, date.today().isoformat(), tpl.get("supplier_id"), wid,
+                    u["id"], shop_sid, subtotal, tax, total,
+                    f"Template: {tpl.get('name') or ''}",
+                ),
+            )
+            pid = await db.lastrowid()
+            for prod, q, c, g, line_total in prepared:
+                await db.execute(
+                    """INSERT INTO purchase_item
+                       (purchase_id,product_id,sku,name,qty,cost,gst_pct,batch_no,expiry,line_total)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (pid, prod["id"], prod["sku"], prod["name"], q, c, g, "", "", line_total),
+                )
+                new_cost = c if c > 0 else money(prod.get("cost") or 0)
+                await db.execute(
+                    "UPDATE product SET stock = stock + ?, cost=? WHERE id=?",
+                    (q, new_cost, prod["id"]),
+                )
+                if wid:
+                    await db.execute(
+                        """INSERT INTO warehouse_stock (warehouse_id,product_id,qty)
+                           VALUES (?,?,?)
+                           ON CONFLICT (warehouse_id,product_id)
+                           DO UPDATE SET qty = warehouse_stock.qty + EXCLUDED.qty""",
+                        (wid, prod["id"], q),
+                    )
+            await audit(db, u["id"], "template_receive", "purchase", pid, grn)
+            await db.commit()
+        return RedirectResponse(f"/purchases?saved=template-{grn}", 303)
+
     @app.get("/purchases", response_class=HTMLResponse)
     async def purchases_list(request: Request):
         u, redir = need(request, admin=True, page="purchases")
@@ -618,10 +1183,13 @@ def register_advanced(app, deps: dict):
             sh, sp = sql_shop(u)
             sp_p, spp = sql_shop_prefixed(u, "p")
             rows = await db.fetchall(
-                f"""SELECT p.*, s.name AS supplier_name, w.name AS warehouse_name
+                f"""SELECT p.*, s.name AS supplier_name, w.name AS warehouse_name,
+                          pi.id AS item_id, pi.product_id, pi.sku, pi.name AS product_name,
+                          pi.qty, pi.cost, pi.gst_pct AS item_gst_pct, pi.batch_no, pi.expiry
                    FROM purchase p
                    LEFT JOIN supplier s ON s.id=p.supplier_id
                    LEFT JOIN warehouse w ON w.id=p.warehouse_id
+                   LEFT JOIN purchase_item pi ON pi.purchase_id=p.id
                    WHERE 1=1{sp_p}
                    ORDER BY p.id DESC LIMIT 50""",
                 spp,
@@ -633,12 +1201,19 @@ def register_advanced(app, deps: dict):
                 f"SELECT * FROM warehouse WHERE active=1{sh} ORDER BY name", sp
             )
             products = await db.fetchall(
-                f"SELECT id,sku,name FROM product WHERE active=1{sh} ORDER BY name LIMIT 500", sp
+                f"""SELECT id,sku,name,stock,cost,gst_pct,gst_override FROM product
+                   WHERE active=1{sh} ORDER BY name LIMIT 500""",
+                sp,
             )
         return templates.TemplateResponse(
             "purchases.html",
-            tctx(request, user=u, purchases=rows, suppliers=suppliers,
-                 warehouses=warehouses, products=products, active="purchases"),
+            tctx(
+                request, user=u, purchases=rows, suppliers=suppliers,
+                warehouses=warehouses, products=products, active="purchases",
+                default_gst=default_gst_pct(),
+                saved=request.query_params.get("saved"),
+                error=request.query_params.get("error"),
+            ),
         )
 
     @app.post("/purchases")
@@ -646,6 +1221,7 @@ def register_advanced(app, deps: dict):
         request: Request,
         supplier_id: str = Form(""), warehouse_id: str = Form(""),
         product_id: str = Form(...), qty: str = Form(...), cost: str = Form("0"),
+        gst_pct: str = Form(""),
         batch_no: str = Form(""), expiry: str = Form(""),
         supplier_name: str = Form(""),
     ):
@@ -656,6 +1232,8 @@ def register_advanced(app, deps: dict):
         c = money(cost)
         if q <= 0:
             return RedirectResponse("/purchases?error=qty", 303)
+        if c < 0:
+            return RedirectResponse("/purchases?error=cost", 303)
         async with await get_conn() as db:
             shop_sid = require_shop_id(u)
             sh, sp = sql_shop(u)
@@ -677,24 +1255,35 @@ def register_advanced(app, deps: dict):
             )
             if not prod:
                 return RedirectResponse("/purchases?error=product", 303)
+            # Purchase GST: posted value, else product effective GST, else app default
+            if str(gst_pct).strip() != "":
+                g = money(gst_pct)
+            else:
+                g = product_effective_gst(prod)
+            subtotal = money(q * c)
+            tax = money(subtotal * g / 100.0)
+            total = money(subtotal + tax)
             grn = _next_no("GRN")
-            lt = money(q * c)
             await db.execute(
                 """INSERT INTO purchase
                    (grn_no,purchase_date,supplier_id,warehouse_id,staff_id,shop_id,subtotal,tax,total)
-                   VALUES (?,?,?,?,?,?,?,0,?)""",
-                (grn, date.today().isoformat(), sid, wid, u["id"], shop_sid, lt, lt),
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (grn, date.today().isoformat(), sid, wid, u["id"], shop_sid, subtotal, tax, total),
             )
             pid = await db.lastrowid()
             await db.execute(
                 """INSERT INTO purchase_item
-                   (purchase_id,product_id,sku,name,qty,cost,batch_no,expiry,line_total)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
-                (pid, prod["id"], prod["sku"], prod["name"], q, c,
-                 batch_no.strip(), expiry.strip(), lt),
+                   (purchase_id,product_id,sku,name,qty,cost,gst_pct,batch_no,expiry,line_total)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (pid, prod["id"], prod["sku"], prod["name"], q, c, g,
+                 batch_no.strip(), expiry.strip(), total),
             )
-            await db.execute("UPDATE product SET stock = stock + ?, cost=? WHERE id=?",
-                             (q, c if c > 0 else prod["cost"], prod["id"]))
+            # Stock up + set last purchase cost (ex-GST) used for profit on sales
+            new_cost = c if c > 0 else money(prod.get("cost") or 0)
+            await db.execute(
+                "UPDATE product SET stock = stock + ?, cost=? WHERE id=?",
+                (q, new_cost, prod["id"]),
+            )
             if wid:
                 await db.execute(
                     """INSERT INTO warehouse_stock (warehouse_id,product_id,qty)
@@ -710,6 +1299,279 @@ def register_advanced(app, deps: dict):
                     (prod["id"], wid, batch_no.strip() or "DEFAULT", expiry.strip(), q, shop_sid),
                 )
             await audit(db, u["id"], "purchase_create", "purchase", pid, grn)
+            await db.commit()
+        return RedirectResponse("/purchases?saved=1", 303)
+
+    @app.get("/purchases/csv-template")
+    async def purchases_csv_template(request: Request):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        from sample_pack import build_csv
+        data, fname = build_csv("grn")
+        return StreamingResponse(
+            io.BytesIO(data),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={fname}"},
+        )
+
+    @app.post("/purchases/upload")
+    async def purchases_upload(
+        request: Request,
+        file: UploadFile = File(...),
+        supplier_id: str = Form(""),
+        warehouse_id: str = Form(""),
+    ):
+        """Bulk GRN: one stock-in per CSV row (sku must already exist)."""
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        raw = await file.read()
+        text = raw.decode("utf-8-sig", errors="replace")
+        reader = csv.DictReader(io.StringIO(text))
+        if not reader.fieldnames:
+            return RedirectResponse("/purchases?error=csv", 303)
+
+        def col(row, *keys):
+            for k in keys:
+                if k in row and row[k] is not None and str(row[k]).strip() != "":
+                    return str(row[k]).strip()
+                # case-insensitive
+                for rk, rv in row.items():
+                    if rk and rk.strip().lower() == k.lower() and rv is not None and str(rv).strip() != "":
+                        return str(rv).strip()
+            return ""
+
+        n = 0
+        skipped = 0
+        async with await get_conn() as db:
+            shop_sid = require_shop_id(u)
+            sh, sp = sql_shop(u)
+            default_sid = int(supplier_id) if supplier_id.strip().isdigit() else None
+            wid = int(warehouse_id) if warehouse_id.strip().isdigit() else None
+            if not wid:
+                wh = await db.fetchone(
+                    f"SELECT id FROM warehouse WHERE active=1{sh} ORDER BY id LIMIT 1", sp
+                )
+                wid = wh["id"] if wh else None
+            supplier_cache: dict[str, int] = {}
+
+            for row in reader:
+                sku = col(row, "sku", "SKU", "code")
+                if sku and not sku.isdigit():
+                    sku = sku.upper()
+                qty = money(col(row, "qty", "quantity", "Qty") or 0)
+                cost = money(col(row, "cost", "rate", "purchase_rate", "price") or 0)
+                if not sku or qty <= 0:
+                    skipped += 1
+                    continue
+                prod = await db.fetchone(
+                    f"SELECT * FROM product WHERE active=1 AND sku=?{sh}",
+                    (sku, *sp),
+                )
+                if not prod:
+                    # try without leading-zero sensitivity for pure numbers
+                    if sku.isdigit():
+                        prod = await db.fetchone(
+                            f"""SELECT * FROM product WHERE active=1{sh}
+                               AND TRIM(sku) ~ '^[0-9]+$'
+                               AND CAST(TRIM(sku) AS INTEGER)=?""",
+                            (*sp, int(sku)),
+                        )
+                    if not prod:
+                        skipped += 1
+                        continue
+
+                sid = default_sid
+                sname = col(row, "supplier", "supplier_name", "Supplier")
+                if sname:
+                    key = sname.lower()
+                    if key in supplier_cache:
+                        sid = supplier_cache[key]
+                    else:
+                        found = await db.fetchone(
+                            f"SELECT id FROM supplier WHERE LOWER(name)=LOWER(?) AND active=1{sh}",
+                            (sname, *sp),
+                        )
+                        if found:
+                            sid = int(found["id"])
+                        else:
+                            await db.execute(
+                                "INSERT INTO supplier (name,shop_id,active) VALUES (?,?,1)",
+                                (sname, shop_sid),
+                            )
+                            sid = await db.lastrowid()
+                        supplier_cache[key] = sid
+
+                gst_raw = col(row, "gst_pct", "gst", "GST")
+                if gst_raw != "":
+                    g = money(gst_raw)
+                else:
+                    g = product_effective_gst(prod)
+                batch_no = col(row, "batch_no", "batch")
+                expiry = col(row, "expiry", "exp")
+                subtotal = money(qty * cost)
+                tax = money(subtotal * g / 100.0)
+                total = money(subtotal + tax)
+                grn = _next_no("GRN")
+                await db.execute(
+                    """INSERT INTO purchase
+                       (grn_no,purchase_date,supplier_id,warehouse_id,staff_id,shop_id,subtotal,tax,total)
+                       VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (grn, date.today().isoformat(), sid, wid, u["id"], shop_sid, subtotal, tax, total),
+                )
+                pid = await db.lastrowid()
+                await db.execute(
+                    """INSERT INTO purchase_item
+                       (purchase_id,product_id,sku,name,qty,cost,gst_pct,batch_no,expiry,line_total)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (pid, prod["id"], prod["sku"], prod["name"], qty, cost, g, batch_no, expiry, total),
+                )
+                new_cost = cost if cost > 0 else money(prod.get("cost") or 0)
+                await db.execute(
+                    "UPDATE product SET stock = stock + ?, cost=? WHERE id=?",
+                    (qty, new_cost, prod["id"]),
+                )
+                if wid:
+                    await db.execute(
+                        """INSERT INTO warehouse_stock (warehouse_id,product_id,qty)
+                           VALUES (?,?,?)
+                           ON CONFLICT (warehouse_id,product_id)
+                           DO UPDATE SET qty = warehouse_stock.qty + EXCLUDED.qty""",
+                        (wid, prod["id"], qty),
+                    )
+                if batch_no or expiry or prod.get("track_batch"):
+                    await db.execute(
+                        """INSERT INTO product_batch (product_id,warehouse_id,batch_no,expiry,qty,shop_id)
+                           VALUES (?,?,?,?,?,?)""",
+                        (prod["id"], wid, batch_no or "DEFAULT", expiry, qty, shop_sid),
+                    )
+                n += 1
+            await audit(db, u["id"], "purchase_upload", "purchase", None, f"rows={n},skipped={skipped}")
+            await db.commit()
+        return RedirectResponse(f"/purchases?saved=uploaded-{n}-skip-{skipped}", 303)
+
+    @app.get("/purchases/{pid}/edit", response_class=HTMLResponse)
+    async def purchase_edit_get(request: Request, pid: int):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        async with await get_conn() as db:
+            if not await assert_same_shop(db, u, "purchase", pid):
+                return RedirectResponse("/purchases?error=shop", 303)
+            sh, sp = sql_shop(u)
+            purchase = await db.fetchone(
+                f"""SELECT p.*, s.name AS supplier_name
+                   FROM purchase p
+                   LEFT JOIN supplier s ON s.id=p.supplier_id
+                   WHERE p.id=?""",
+                (pid,),
+            )
+            item = await db.fetchone(
+                "SELECT * FROM purchase_item WHERE purchase_id=? ORDER BY id LIMIT 1",
+                (pid,),
+            )
+            suppliers = await db.fetchall(
+                f"SELECT * FROM supplier WHERE active=1{sh} ORDER BY name", sp
+            )
+        if not purchase or not item:
+            return RedirectResponse("/purchases?error=not_found", 303)
+        return templates.TemplateResponse(
+            "purchase_edit.html",
+            tctx(
+                request, user=u, purchase=purchase, item=item,
+                suppliers=suppliers, active="purchases",
+                error=request.query_params.get("error"),
+            ),
+        )
+
+    @app.post("/purchases/{pid}/edit")
+    async def purchase_edit_post(
+        request: Request, pid: int,
+        supplier_id: str = Form(""),
+        qty: str = Form(...),
+        cost: str = Form("0"),
+        gst_pct: str = Form("0"),
+        batch_no: str = Form(""),
+        expiry: str = Form(""),
+    ):
+        u, redir = need(request, admin=True, page="purchases")
+        if redir:
+            return redir
+        new_qty = money(qty)
+        new_cost = money(cost)
+        new_gst = money(gst_pct)
+        if new_qty <= 0:
+            return RedirectResponse(f"/purchases/{pid}/edit?error=qty", 303)
+        if new_cost < 0:
+            return RedirectResponse(f"/purchases/{pid}/edit?error=cost", 303)
+        async with await get_conn() as db:
+            if not await assert_same_shop(db, u, "purchase", pid):
+                return RedirectResponse("/purchases?error=shop", 303)
+            purchase = await db.fetchone("SELECT * FROM purchase WHERE id=?", (pid,))
+            item = await db.fetchone(
+                "SELECT * FROM purchase_item WHERE purchase_id=? ORDER BY id LIMIT 1",
+                (pid,),
+            )
+            if not purchase or not item:
+                return RedirectResponse("/purchases?error=not_found", 303)
+
+            old_qty = money(item.get("qty") or 0)
+            qty_delta = money(new_qty - old_qty)
+            product_id = item.get("product_id")
+            wid = purchase.get("warehouse_id")
+            sid = int(supplier_id) if str(supplier_id).strip().isdigit() else None
+
+            subtotal = money(new_qty * new_cost)
+            tax = money(subtotal * new_gst / 100.0)
+            total = money(subtotal + tax)
+
+            await db.execute(
+                """UPDATE purchase_item
+                   SET qty=?, cost=?, gst_pct=?, batch_no=?, expiry=?, line_total=?
+                   WHERE id=?""",
+                (new_qty, new_cost, new_gst, batch_no.strip(), expiry.strip(), total, item["id"]),
+            )
+            await db.execute(
+                """UPDATE purchase
+                   SET supplier_id=?, subtotal=?, tax=?, total=?
+                   WHERE id=?""",
+                (sid, subtotal, tax, total, pid),
+            )
+
+            if product_id and qty_delta != 0:
+                await db.execute(
+                    "UPDATE product SET stock = GREATEST(COALESCE(stock,0) + ?, 0) WHERE id=?",
+                    (qty_delta, int(product_id)),
+                )
+                if wid:
+                    if qty_delta > 0:
+                        await db.execute(
+                            """INSERT INTO warehouse_stock (warehouse_id,product_id,qty)
+                               VALUES (?,?,?)
+                               ON CONFLICT (warehouse_id,product_id)
+                               DO UPDATE SET qty = warehouse_stock.qty + EXCLUDED.qty""",
+                            (int(wid), int(product_id), qty_delta),
+                        )
+                    else:
+                        await db.execute(
+                            """UPDATE warehouse_stock
+                               SET qty = GREATEST(COALESCE(qty,0) + ?, 0)
+                               WHERE warehouse_id=? AND product_id=?""",
+                            (qty_delta, int(wid), int(product_id)),
+                        )
+
+            # Keep product cost aligned with this purchase rate when edited
+            if product_id and new_cost > 0:
+                await db.execute(
+                    "UPDATE product SET cost=? WHERE id=?",
+                    (new_cost, int(product_id)),
+                )
+
+            await audit(
+                db, u["id"], "purchase_edit", "purchase", pid,
+                f"qty {old_qty}->{new_qty}, cost {item.get('cost')}->{new_cost}",
+            )
             await db.commit()
         return RedirectResponse("/purchases?saved=1", 303)
 
@@ -1324,20 +2186,42 @@ def register_advanced(app, deps: dict):
         if redir:
             return redir
         form = await request.form()
-        selected = form.getlist("page")
-        pages_csv = ",".join(selected)
+        selected = list(form.getlist("page") or [])
+        # Fallback if single value / odd clients
+        if not selected:
+            one = form.get("page")
+            if one:
+                selected = [one]
+        selected = [str(x).strip() for x in selected if x and str(x).strip()]
         async with await get_conn() as db:
-            row = await db.fetchone("SELECT id,role,shop_id FROM staff WHERE id=?", (sid,))
+            row = await db.fetchone(
+                "SELECT id,role,shop_id FROM staff WHERE id=? AND active=1", (sid,)
+            )
             if not row or row["role"] == "superadmin":
                 return RedirectResponse("/permissions", 303)
             if not is_superadmin(u) and u.get("shop_id") and row.get("shop_id") != u.get("shop_id"):
                 return RedirectResponse("/permissions", 303)
+            feats = session_features(request)
+            allowed = {p["key"] for p in assignable_pages(row["role"] or "cashier", feats)}
+            selected = [k for k in selected if k in allowed]
+            # Never lock the only shop admin out of Assign pages / Employees / Settings
+            if row["role"] == "admin":
+                for must in ("permissions", "employees", "settings", "counters"):
+                    if must in allowed and must not in selected:
+                        selected.append(must)
+            pages_csv = ",".join(dict.fromkeys(selected))  # unique, keep order
             await db.execute(
                 "UPDATE staff SET pages=?, permissions=? WHERE id=?",
                 (pages_csv, pages_csv, sid),
             )
             await audit(db, u["id"], "pages_update", "staff", sid, pages_csv)
             await db.commit()
+            # Apply immediately if editing the logged-in user
+            if u.get("id") == sid:
+                fresh = await db.fetchone("SELECT * FROM staff WHERE id=?", (sid,))
+                suf = deps.get("session_user_from_row")
+                if fresh and suf:
+                    request.session["user"] = suf(fresh)
         return RedirectResponse("/permissions?saved=1", 303)
 
     @app.get("/offline", response_class=HTMLResponse)
@@ -1418,9 +2302,25 @@ self.addEventListener('fetch', e=>{
         async with await get_conn() as db:
             r = await db.fetchone(
                 f"""SELECT id,sku,name,mrp,discount,price,cost,stock,unit,gst_pct,gst_override,hsn
-                   FROM product WHERE active=1 AND UPPER(sku)=UPPER(?){sh}""",
+                   FROM product WHERE active=1 AND sku=?{sh}""",
                 (code, *sp),
             )
+            if not r and code.isdigit():
+                # Match 1 / 01 / 001 as the same numeric code when stored padded
+                r = await db.fetchone(
+                    f"""SELECT id,sku,name,mrp,discount,price,cost,stock,unit,gst_pct,gst_override,hsn
+                       FROM product WHERE active=1{sh}
+                         AND TRIM(sku) ~ '^[0-9]+$'
+                         AND CAST(TRIM(sku) AS INTEGER)=?
+                       ORDER BY LENGTH(TRIM(sku)) DESC LIMIT 1""",
+                    (*sp, int(code)),
+                )
+            if not r:
+                r = await db.fetchone(
+                    f"""SELECT id,sku,name,mrp,discount,price,cost,stock,unit,gst_pct,gst_override,hsn
+                       FROM product WHERE active=1 AND UPPER(sku)=UPPER(?){sh}""",
+                    (code, *sp),
+                )
         if not r:
             return JSONResponse({"ok": False, "error": "not_found"})
         lang = get_lang(request)

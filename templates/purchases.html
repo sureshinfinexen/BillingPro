@@ -2,11 +2,60 @@
 {% block title %}{{ t('purchases') }} · {{ APP_NAME }}{% endblock %}
 {% block page_title %}{{ t('purchases') }} / GRN{% endblock %}
 {% block content %}
-{% if request.query_params.get('saved') %}<div class="alert alert-ok">{{ t('saved_ok') }}</div>{% endif %}
-<div class="card" style="max-width:640px;margin-bottom:16px">
-  <div class="card-header"><h2>{{ t('add_purchase') }}</h2></div>
+{% if saved %}<div class="alert alert-ok">{{ t('saved_ok') }}{% if saved.startswith('uploaded') %} ({{ saved }}){% endif %}</div>{% endif %}
+{% if error %}<div class="alert alert-err">{{ t('generic_error') }} ({{ error }})</div>{% endif %}
+
+<div class="card" style="margin-bottom:12px">
+  <div class="card-body" style="font-size:13px;line-height:1.5">
+    <strong>{{ t('inventory_flow_title') }}</strong>
+    <ol style="margin:8px 0 0 18px;padding:0;color:var(--text-secondary)">
+      <li>{{ t('inventory_flow_1') }}</li>
+      <li>{{ t('inventory_flow_2') }}</li>
+      <li>{{ t('inventory_flow_3') }}</li>
+      <li>{{ t('inventory_flow_4') }}</li>
+    </ol>
+    <p style="margin-top:8px;font-size:12px;color:var(--text-secondary)">{{ t('bulk_best_way') }}</p>
+  </div>
+</div>
+
+<div class="search-bar no-print">
+  <a href="/suppliers" class="btn btn-outline">{{ t('suppliers') }}</a>
+  <a href="/purchase-templates" class="btn btn-outline">📋 {{ t('purchase_templates') }}</a>
+  <a href="/products" class="btn btn-outline">{{ t('products') }}</a>
+  <a href="/stock" class="btn btn-outline">{{ t('stock') }}</a>
+  <a href="/purchases/csv-template" class="btn btn-outline">⬇ {{ t('download_sample_csv') }}</a>
+</div>
+
+<div class="card" style="max-width:720px;margin-bottom:16px">
+  <div class="card-header"><h2>{{ t('bulk_grn_upload') }}</h2></div>
   <div class="card-body">
-    <form method="post" action="/purchases">
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;line-height:1.4">{{ t('grn_csv_hint') }}</p>
+    <form method="post" action="/purchases/upload" enctype="multipart/form-data">
+      <div class="form-row">
+        <div class="form-group mb-0"><label class="form-label">{{ t('supplier') }} ({{ t('optional') }})</label>
+          <select class="form-control" name="supplier_id">
+            <option value="">{{ t('select') }} — {{ t('or_use_csv_supplier') }}</option>
+            {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group mb-0"><label class="form-label">{{ t('warehouse') }}</label>
+          <select class="form-control" name="warehouse_id">
+            {% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <input type="file" name="file" accept=".csv" required class="form-control" style="max-width:320px">
+        <button class="btn btn-primary" type="submit">{{ t('upload') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="max-width:720px;margin-bottom:16px">
+  <div class="card-header"><h2>{{ t('add_purchase') }} (GRN) — {{ t('one_product') }}</h2></div>
+  <div class="card-body">
+    <form method="post" action="/purchases" id="grnForm">
       <div class="form-row">
         <div class="form-group"><label class="form-label">{{ t('supplier') }}</label>
           <select class="form-control" name="supplier_id">
@@ -16,39 +65,111 @@
         <div class="form-group"><label class="form-label">{{ t('new_supplier') }}</label>
           <input class="form-control" name="supplier_name" placeholder="{{ t('name') }}"></div>
       </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">{{ t('warehouse') }}</label>
-          <select class="form-control" name="warehouse_id">
-            {% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
-          </select></div>
-        <div class="form-group"><label class="form-label">{{ t('products') }} *</label>
-          <select class="form-control" name="product_id" required>
-            {% for p in products|default([]) %}<option value="{{ p.id }}">{{ p.sku }} — {{ d(p.name) }}</option>{% endfor %}
-          </select></div>
+      <div class="form-group"><label class="form-label">{{ t('products') }} *</label>
+        <select class="form-control" name="product_id" id="product_id" required>
+          <option value="">{{ t('select') }}</option>
+          {% for p in products|default([]) %}
+          <option value="{{ p.id }}"
+                  data-cost="{{ p.cost or 0 }}"
+                  data-gst="{{ p.gst_pct if (p.gst_override|default(0)|int)==1 else (default_gst if default_gst is defined else p.gst_pct or 18) }}">
+            {{ p.sku }} — {{ d(p.name) }} ({{ t('stock') }}: {{ p.stock }})
+          </option>
+          {% endfor %}
+        </select>
       </div>
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">{{ t('quantity') }} *</label>
-          <input class="form-control" type="number" step="0.01" min="0.01" name="qty" required></div>
-        <div class="form-group"><label class="form-label">{{ t('cost') }}</label>
-          <input class="form-control" type="number" step="0.01" min="0" name="cost" value="0"></div>
-        <div class="form-group"><label class="form-label">{{ t('batch_no') }}</label>
-          <input class="form-control" name="batch_no"></div>
+          <input class="form-control" type="number" step="0.01" min="0.01" name="qty" id="qty" required value="1"></div>
+        <div class="form-group"><label class="form-label">{{ t('purchase_rate') }} *</label>
+          <input class="form-control" type="number" step="0.01" min="0" name="cost" id="cost" value="0" required>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">{{ t('purchase_rate_help') }}</div>
+        </div>
+        <div class="form-group"><label class="form-label">{{ t('gst') }} %</label>
+          <input class="form-control" type="number" step="0.01" min="0" name="gst_pct" id="gst_pct" value="{{ default_gst if default_gst is defined else 18 }}">
+        </div>
       </div>
-      <div class="form-group"><label class="form-label">{{ t('expiry') }}</label>
-        <input class="form-control" type="date" name="expiry"></div>
-      <button class="btn btn-primary" type="submit">{{ t('save') }}</button>
+      <div id="grn-preview" style="font-size:12.5px;background:color-mix(in srgb,var(--primary-light) 45%,transparent);border-radius:8px;padding:8px 10px;margin-bottom:10px;line-height:1.45">
+        {{ t('purchase_preview') }}: <strong id="pv-sub">₹0.00</strong> + {{ t('gst') }} <strong id="pv-tax">₹0.00</strong>
+        = <strong id="pv-tot">₹0.00</strong>
+      </div>
+
+      <details style="margin-bottom:12px">
+        <summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text-secondary)">{{ t('optional_advanced') }}</summary>
+        <div class="form-row" style="margin-top:10px">
+          <div class="form-group"><label class="form-label">{{ t('warehouse') }}</label>
+            <select class="form-control" name="warehouse_id">
+              {% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+            </select>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">{{ t('warehouse_optional_help') }}</div>
+          </div>
+          <div class="form-group"><label class="form-label">{{ t('batch_no') }}</label>
+            <input class="form-control" name="batch_no" placeholder="{{ t('optional') }}">
+          </div>
+        </div>
+        <div class="form-group"><label class="form-label">{{ t('expiry') }}</label>
+          <input class="form-control" type="date" name="expiry" style="max-width:220px">
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">{{ t('batch_optional_help') }}</div>
+        </div>
+      </details>
+
+      <button class="btn btn-primary" type="submit">{{ t('receive_stock') }}</button>
     </form>
   </div>
 </div>
+
 <div class="card"><div class="card-body" style="padding:0">
+<div class="table-scroll">
 <table>
-<thead><tr><th>GRN</th><th>{{ t('date') }}</th><th>{{ t('supplier') }}</th><th>{{ t('warehouse') }}</th><th class="num">{{ t('total') }}</th></tr></thead>
+<thead><tr>
+  <th>GRN</th><th>{{ t('date') }}</th><th>{{ t('supplier') }}</th><th>{{ t('products') }}</th>
+  <th class="num">{{ t('quantity') }}</th><th class="num">{{ t('purchase_rate') }}</th>
+  <th class="num">{{ t('gst') }}</th><th class="num">{{ t('total') }}</th>
+  <th class="act no-print">{{ t('actions') }}</th>
+</tr></thead>
 <tbody>
 {% for p in purchases %}
-<tr><td>{{ p.grn_no }}</td><td>{{ p.purchase_date }}</td><td>{{ p.supplier_name or '—' }}</td><td>{{ p.warehouse_name or '—' }}</td><td class="num">₹{{ p.total|money }}</td></tr>
+<tr>
+  <td>{{ p.grn_no }}</td>
+  <td>{{ p.purchase_date }}</td>
+  <td>{{ p.supplier_name or '—' }}</td>
+  <td>{% if p.sku %}<code style="font-size:11px">{{ p.sku }}</code> {{ d(p.product_name) }}{% else %}—{% endif %}</td>
+  <td class="num">{{ p.qty if p.qty is not none else '—' }}</td>
+  <td class="num">{% if p.cost is not none %}₹{{ p.cost|money }}{% else %}—{% endif %}</td>
+  <td class="num">₹{{ (p.tax or 0)|money }}</td>
+  <td class="num">₹{{ p.total|money }}</td>
+  <td class="act no-print">
+    <a href="/purchases/{{ p.id }}/edit" class="btn btn-sm btn-outline">{{ t('edit') }}</a>
+  </td>
+</tr>
 {% else %}
-<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
+<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-secondary)">{{ t('no_results') }}</td></tr>
 {% endfor %}
 </tbody></table>
+</div>
 </div></div>
+<script>
+(function(){
+  const prod=document.getElementById('product_id');
+  const cost=document.getElementById('cost');
+  const gst=document.getElementById('gst_pct');
+  const qty=document.getElementById('qty');
+  function money(n){ return '₹'+(Math.round((Number(n)||0)*100)/100).toFixed(2); }
+  function preview(){
+    const q=Number(qty.value)||0, c=Number(cost.value)||0, g=Number(gst.value)||0;
+    const sub=q*c, tax=sub*g/100, tot=sub+tax;
+    document.getElementById('pv-sub').textContent=money(sub);
+    document.getElementById('pv-tax').textContent=money(tax);
+    document.getElementById('pv-tot').textContent=money(tot);
+  }
+  prod.addEventListener('change', ()=>{
+    const opt=prod.selectedOptions[0];
+    if(!opt||!opt.value) return;
+    if(opt.dataset.cost) cost.value=Number(opt.dataset.cost)||0;
+    if(opt.dataset.gst) gst.value=Number(opt.dataset.gst)||0;
+    preview();
+  });
+  [qty,cost,gst].forEach(el=>el.addEventListener('input', preview));
+  preview();
+})();
+</script>
 {% endblock %}
